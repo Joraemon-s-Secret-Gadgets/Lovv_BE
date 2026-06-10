@@ -80,8 +80,8 @@ class S3RawCityRepository:
             raise CityDataInvalidError() from error
 
         try:
-            city_record = document.get("city_record") or {}
-            records = document.get("records") or []
+            city_record = _city_record_from_document(document)
+            records = _items_from_document(document)
             attractions = [_place_from_item(item, "attraction") for item in records if item.get("entity_type") == "attraction"]
             festivals = [_place_from_item(item, "festival") for item in records if item.get("entity_type") == "festival"]
             attractions = [place for place in attractions if place is not None]
@@ -98,8 +98,8 @@ class S3RawCityRepository:
         }
 
     def _build_city_record_from_document(self, document, key):
-        city_record = document.get("city_record") or {}
-        items = document.get("records") or []
+        city_record = _city_record_from_document(document)
+        items = _items_from_document(document)
         record = build_city_api_record(city_record, items, source="S3RawCityDetails", source_key=key)
         record["detail_summary"] = _summary(city_record, items)
         return record
@@ -145,6 +145,97 @@ def city_id_to_file_stem(city_id):
     if not isinstance(city_id, str) or "-" not in city_id:
         return ""
     return city_id.split("-", 1)[1]
+
+
+def _city_record_from_document(document):
+    city_record = document.get("city_record")
+    if isinstance(city_record, dict) and city_record:
+        return city_record
+
+    meta = document.get("meta") if isinstance(document.get("meta"), dict) else {}
+    attractions = document.get("attractions") if isinstance(document.get("attractions"), list) else []
+    festivals = document.get("festivals") if isinstance(document.get("festivals"), list) else []
+    city_name_en = meta.get("city_name_en") or document.get("city_name_en")
+    city_id = meta.get("city_id") or document.get("city_id") or (f"KR-{city_name_en}" if city_name_en else None)
+    return {
+        "city_id": city_id,
+        "city_name_en": city_name_en,
+        "city_name_ko": meta.get("city_name_ko") or document.get("city_name_ko"),
+        "province": meta.get("province") or document.get("province"),
+        "attraction_count": _count_field(document, "attractions_count_filtered", attractions),
+        "festival_count": _count_field(document, "festivals_count_filtered", festivals),
+        "visitor_statistics_count": _visitor_statistics_count(document.get("visitor_statistics")),
+    }
+
+
+def _items_from_document(document):
+    records = document.get("records")
+    if isinstance(records, list):
+        return records
+
+    attractions = document.get("attractions") if isinstance(document.get("attractions"), list) else []
+    festivals = document.get("festivals") if isinstance(document.get("festivals"), list) else []
+    visitor_statistics_count = _visitor_statistics_count(document.get("visitor_statistics"))
+    items = [_normalize_raw_place(item, "attraction") for item in attractions if isinstance(item, dict)]
+    items.extend(_normalize_raw_place(item, "festival") for item in festivals if isinstance(item, dict))
+    items.extend({"entity_type": "visitor_statistics"} for _ in range(visitor_statistics_count))
+    return items
+
+
+def _normalize_raw_place(item, entity_type):
+    common = _common_detail(item)
+    theme = item.get("_assigned_theme") or item.get("theme")
+    theme_tags = [theme] if isinstance(theme, str) and theme else []
+    address = _join_address(item.get("addr1") or common.get("addr1"), item.get("addr2") or common.get("addr2"))
+    return {
+        "entity_type": entity_type,
+        "content_id": item.get("content_id") or item.get("contentid") or common.get("contentid"),
+        "title": item.get("title") or common.get("title"),
+        "description": item.get("description") or common.get("overview"),
+        "address": address,
+        "phone": item.get("phone") or item.get("tel") or common.get("tel"),
+        "image_url": item.get("image_url") or item.get("firstimage") or common.get("firstimage") or item.get("firstimage2") or common.get("firstimage2"),
+        "latitude": item.get("latitude") or item.get("mapy") or common.get("mapy"),
+        "longitude": item.get("longitude") or item.get("mapx") or common.get("mapx"),
+        "theme": theme,
+        "theme_tags": theme_tags,
+        "eventstartdate": item.get("eventstartdate") or _intro_detail(item).get("eventstartdate"),
+        "eventenddate": item.get("eventenddate") or _intro_detail(item).get("eventenddate"),
+        "visit_months": item.get("visit_months") if isinstance(item.get("visit_months"), list) else [],
+    }
+
+
+def _common_detail(item):
+    detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
+    common = detail.get("common") if isinstance(detail.get("common"), dict) else {}
+    return common
+
+
+def _intro_detail(item):
+    detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
+    intro = detail.get("intro") if isinstance(detail.get("intro"), dict) else {}
+    return intro
+
+
+def _join_address(addr1, addr2):
+    parts = [value.strip() for value in (addr1, addr2) if isinstance(value, str) and value.strip()]
+    return " ".join(parts) or None
+
+
+def _count_field(document, field, fallback_items):
+    value = document.get(field)
+    return value if isinstance(value, int) else len(fallback_items)
+
+
+def _visitor_statistics_count(value):
+    if isinstance(value, dict):
+        monthly = value.get("monthly_statistics")
+        if isinstance(monthly, list):
+            return len(monthly)
+        return 1 if value else 0
+    if isinstance(value, list):
+        return len(value)
+    return 0
 
 
 def _place_from_item(item, place_type):
