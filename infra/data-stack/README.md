@@ -22,12 +22,13 @@ Development is standardized as:
 
 - Stack: `lovv-dev-data-stack`
 - Environment: `dev`
-- Database: `lovv_dev`
+- Database: `lovvdev`
 - DynamoDB prefix: `lovv_dev_`
 - SSM prefix: `/lovv/dev/`
 
 Use `infra/data-stack/parameters/dev.parameters.example.json` as the single development parameter source. Replace placeholder subnet and security group IDs with actual development VPC values before deployment.
 The template now creates the development VPC, two private subnets, and RDS security group directly, so separate subnet or security group IDs are not required for the default dev deployment.
+The template also creates VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3 so SAM Lambda functions in the private subnets can reach required AWS services without a NAT Gateway.
 
 ## Report
 

@@ -65,7 +65,7 @@ Use deterministic, environment-scoped names.
 
 | Resource | Naming rule | Example |
 | --- | --- | --- |
-| RDS database | `lovv_{env}` | `lovv_dev` |
+| RDS database | `lovv{env}` | `lovvdev` |
 | DynamoDB table | `lovv_{env}_{table}` | `lovv_dev_user_event_logs` |
 | S3 image bucket | `lovv-image-{env}-{account_or_suffix}` | `lovv-image-dev-123456789012` |
 | SSM parameter | `/lovv/{env}/{service}/{name}` | `/lovv/dev/rds/host` |

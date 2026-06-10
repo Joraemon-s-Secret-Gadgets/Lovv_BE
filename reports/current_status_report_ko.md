@@ -45,7 +45,10 @@ CloudFormation 템플릿은 현재 다음 리소스를 정의한다.
 
 - 개발용 VPC
 - private subnet 2개
+- private route table 및 subnet 연결
 - RDS security group
+- interface endpoint security group
+- Secrets Manager, SSM, DynamoDB, S3용 VPC Endpoint
 - RDS DB subnet group
 - RDS MySQL DB instance
 - RDS managed master user secret
@@ -163,3 +166,11 @@ SAM local:
 ```
 
 이 한국어 보고서는 위 커밋 이후 추가된 보조 현황 보고서다.
+
+# 11. 후속 수정 기록
+
+- RDS for MySQL master username은 `lovvadmin`으로 통일한다.
+- RDS for MySQL 초기 DB 이름은 `lovvdev`로 통일한다.
+- `lovv_admin`, `lovv_dev`처럼 underscore가 포함된 값은 CloudFormation template validation을 통과하더라도 실제 RDS 생성 단계에서 실패할 수 있으므로 사용하지 않는다.
+- private subnet에 연결된 SAM Lambda가 Secrets Manager, SSM, DynamoDB, S3에 접근할 수 있도록 Data Stack에 VPC Endpoint를 추가한다.
+- 일반 인터넷 egress는 여전히 제공하지 않는다. 외부 API 호출이 필요하면 NAT Gateway, egress proxy, 또는 VPC 밖 Lambda 설계를 별도로 검토한다.

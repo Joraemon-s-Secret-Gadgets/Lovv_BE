@@ -10,8 +10,8 @@ Parameters:
     Description: Lowercase environment name used in resource names and SSM parameter paths.
   LovvDbName:
     Type: String
-    Default: lovv_dev
-    AllowedPattern: "^[A-Za-z][A-Za-z0-9_]{1,63}$"
+    Default: lovvdev
+    AllowedPattern: "^[A-Za-z][A-Za-z0-9]{1,63}$"
     Description: MySQL database name.
   DBInstanceClass:
     Type: String
@@ -110,6 +110,33 @@ Resources:
         - Key: Tier
           Value: private
 
+  # private subnet용 route table이다. NAT Gateway는 두지 않고 AWS 서비스 접근은 VPC Endpoint로 처리한다.
+  LovvPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      Tags:
+        - Key: Name
+          Value: !Sub lovv-${EnvName}-private-rt
+        - Key: Project
+          Value: Lovv
+        - Key: Environment
+          Value: !Ref EnvName
+
+  # private subnet A를 Data Stack private route table에 연결한다.
+  LovvPrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref LovvPrivateSubnetA
+      RouteTableId: !Ref LovvPrivateRouteTable
+
+  # private subnet C를 Data Stack private route table에 연결한다.
+  LovvPrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref LovvPrivateSubnetC
+      RouteTableId: !Ref LovvPrivateRouteTable
+
   # RDS MySQL 접근 보안 그룹이다. v0.1은 dev CIDR 기반 접근이며, 이후 Lambda SG 기반 접근으로 강화할 수 있다.
   LovvRDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -132,6 +159,77 @@ Resources:
           Value: Lovv
         - Key: Environment
           Value: !Ref EnvName
+
+  # Interface VPC Endpoint 보안 그룹이다. private subnet의 Lambda가 HTTPS로 AWS 서비스 endpoint에 접근하도록 허용한다.
+  LovvEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub Lovv ${EnvName} interface endpoint HTTPS access
+      VpcId: !Ref LovvDevVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+          Description: Development VPC HTTPS access to interface endpoints
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub lovv-${EnvName}-endpoint-sg
+        - Key: Project
+          Value: Lovv
+        - Key: Environment
+          Value: !Ref EnvName
+
+  # Secrets Manager VPC Endpoint: VPC 내부 Lambda가 RDS secret 값을 private 경로로 조회한다.
+  SecretsManagerVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref LovvPrivateSubnetA
+        - !Ref LovvPrivateSubnetC
+      SecurityGroupIds:
+        - !Ref LovvEndpointSecurityGroup
+
+  # SSM VPC Endpoint: VPC 내부 Lambda가 Parameter Store 값을 private 경로로 조회한다.
+  SSMVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref LovvPrivateSubnetA
+        - !Ref LovvPrivateSubnetC
+      SecurityGroupIds:
+        - !Ref LovvEndpointSecurityGroup
+
+  # DynamoDB Gateway Endpoint: private subnet route table에서 DynamoDB API를 NAT 없이 호출한다.
+  DynamoDBGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref LovvPrivateRouteTable
+
+  # S3 Gateway Endpoint: private subnet route table에서 S3 API를 NAT 없이 호출한다.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref LovvPrivateRouteTable
 
   # RDS DB subnet group: RDS가 public subnet이 아닌 private subnet에 생성되도록 강제한다.
   LovvDBSubnetGroup:
@@ -510,6 +608,14 @@ Resources:
       Type: String
       Value: !Ref LovvRDSSecurityGroup
 
+  # Interface endpoint security group 공개값이다.
+  EndpointSecurityGroupParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /lovv/${EnvName}/network/endpoint_security_group
+      Type: String
+      Value: !Ref LovvEndpointSecurityGroup
+
   # SAM 앱이 사용할 DB 이름 공개값이다.
   RDSDatabaseNameParameter:
     Type: AWS::SSM::Parameter
@@ -597,6 +703,9 @@ Outputs:
   RDSSecurityGroup:
     Description: Development RDS security group ID.
     Value: !Ref LovvRDSSecurityGroup
+  EndpointSecurityGroup:
+    Description: Development interface endpoint security group ID.
+    Value: !Ref LovvEndpointSecurityGroup
   RDSHost:
     Description: RDS endpoint host.
     Value: !GetAtt LovvRDSInstance.Endpoint.Address

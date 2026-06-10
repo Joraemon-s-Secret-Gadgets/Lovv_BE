@@ -63,7 +63,7 @@ Development usage is standardized on these values:
 | --- | --- |
 | Environment | `dev` |
 | CloudFormation stack | `lovv-dev-data-stack` |
-| RDS database | `lovv_dev` |
+| RDS database | `lovvdev` |
 | RDS instance identifier | `lovv-dev-mysql` |
 | RDS instance class | `db.t4g.micro` |
 | RDS allocated storage | `20` GiB |
@@ -73,8 +73,9 @@ Development usage is standardized on these values:
 | S3 image bucket | `lovv-image-dev-{AWS::AccountId}` |
 | SSM parameter prefix | `/lovv/dev/` |
 
-Network inputs still depend on the target AWS account and VPC. For development, use private development subnets and a development DB security group in `infra/data-stack/parameters/dev.parameters.example.json`.
 The current dev template creates its own development VPC, two private subnets, and RDS security group. Separate subnet IDs and security group IDs are not required for the default dev deployment.
+The current dev template also creates VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3. SAM Lambda functions attached to the private subnets can call these AWS services without a NAT Gateway.
+General internet egress is not provided. External API calls require a separate NAT Gateway, egress proxy, or non-VPC Lambda design.
 
 # 4. Deploy Development Stack
 
@@ -91,6 +92,8 @@ Notes:
 
 - The template creates private subnets for RDS.
 - The template creates a development RDS security group with MySQL ingress controlled by `DevMysqlIngressCidr`.
+- The template creates VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3.
+- The template does not create a NAT Gateway.
 - Keep `RDSDeletionProtection=true` unless explicitly testing teardown.
 - The template uses RDS managed master user password. The generated secret ARN is published, not the password.
 
@@ -125,6 +128,7 @@ The stack publishes these SSM parameters for development:
 /lovv/dev/network/private_subnet_a
 /lovv/dev/network/private_subnet_c
 /lovv/dev/network/rds_security_group
+/lovv/dev/network/endpoint_security_group
 /lovv/dev/ddb/user_event_logs
 /lovv/dev/ddb/agent_runs
 /lovv/dev/ddb/festival_verify_cache
@@ -209,8 +213,10 @@ Current v0.1 Data Stack behavior:
 
 - The template creates a development VPC and two private subnets.
 - The template creates an RDS security group.
+- The template creates an endpoint security group and VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3.
 - The RDS security group currently allows MySQL ingress from `DevMysqlIngressCidr`.
 - Default `DevMysqlIngressCidr` is `10.40.0.0/16`, so traffic from Lambdas inside the generated dev VPC can reach RDS if the Lambda security group allows egress.
+- General internet egress is still unavailable because NAT Gateway is not provisioned.
 
 Recommended next hardening:
 
@@ -284,6 +290,7 @@ Required Data Stack parameters:
 /lovv/dev/network/private_subnet_a
 /lovv/dev/network/private_subnet_c
 /lovv/dev/network/rds_security_group
+/lovv/dev/network/endpoint_security_group
 /lovv/dev/rds/host
 /lovv/dev/rds/db_name
 /lovv/dev/rds/secret_arn
@@ -320,6 +327,8 @@ Current v0.1 security model:
 - RDS security group allows MySQL ingress from `DevMysqlIngressCidr`.
 - Default `DevMysqlIngressCidr=10.40.0.0/16`.
 - Lambda attached to the generated dev private subnets can reach RDS if its own security group permits egress.
+- Lambda attached to the generated dev private subnets can reach Secrets Manager, SSM, DynamoDB, and S3 through VPC Endpoints.
+- Lambda still cannot call arbitrary public internet APIs unless NAT Gateway or another egress path is added.
 
 Recommended hardening:
 
@@ -366,7 +375,7 @@ aws ssm start-session `
 Then connect locally through:
 
 ```powershell
-mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovv_dev
+mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovvdev
 ```
 
 ## 10.4 Bastion SSH Port Forwarding Option
@@ -382,7 +391,7 @@ ssh -N `
 Then connect locally through:
 
 ```powershell
-mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovv_dev
+mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovvdev
 ```
 
 ## 10.5 Temporary Public Access Option
@@ -460,6 +469,7 @@ aws ssm get-parameter --name /lovv/dev/network/vpc_id
 aws ssm get-parameter --name /lovv/dev/network/private_subnet_a
 aws ssm get-parameter --name /lovv/dev/network/private_subnet_c
 aws ssm get-parameter --name /lovv/dev/network/rds_security_group
+aws ssm get-parameter --name /lovv/dev/network/endpoint_security_group
 aws ssm get-parameter --name /lovv/dev/s3/image_bucket
 aws ssm get-parameter --name /lovv/dev/ddb/user_event_logs
 aws ssm get-parameter --name /lovv/dev/ddb/agent_runs

@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey": "LovvDbName",
-    "ParameterValue": "lovv_dev"
+    "ParameterValue": "lovvdev"
   },
   {
     "ParameterKey": "DBInstanceClass",

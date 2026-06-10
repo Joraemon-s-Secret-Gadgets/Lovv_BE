@@ -44,7 +44,10 @@ CloudFormation currently defines:
 
 - Development VPC.
 - Two private subnets.
+- Private route table and subnet associations.
 - RDS security group.
+- Interface endpoint security group.
+- VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3.
 - RDS DB subnet group.
 - RDS MySQL DB instance with managed master user secret.
 - Seven DynamoDB tables with required TTL/GSI configuration.
@@ -133,3 +136,7 @@ Reason:
 - RDS for MySQL master username is standardized as `lovvadmin`.
 - The previous `lovv_admin` form can pass CloudFormation template validation but may fail during actual RDS creation because MySQL master usernames should use letters and numbers only.
 - The template validation pattern now rejects underscores for `DBMasterUsername`.
+- RDS for MySQL initial database name is standardized as `lovvdev`.
+- The previous `lovv_dev` form can pass CloudFormation template validation but may fail during actual RDS creation because the initial DB name should use letters and numbers only.
+- The Data Stack now provisions private AWS service access through VPC Endpoints for Secrets Manager, SSM, DynamoDB, and S3.
+- General internet egress is still out of scope unless NAT Gateway or another egress path is added later.
