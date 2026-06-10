@@ -17,7 +17,7 @@
   },
   {
     "ParameterKey": "DBMasterUsername",
-    "ParameterValue": "lovv_admin"
+    "ParameterValue": "lovvadmin"
   },
   {
     "ParameterKey": "VpcCidr",

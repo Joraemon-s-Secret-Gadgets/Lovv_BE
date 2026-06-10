@@ -67,7 +67,7 @@ Development usage is standardized on these values:
 | RDS instance identifier | `lovv-dev-mysql` |
 | RDS instance class | `db.t4g.micro` |
 | RDS allocated storage | `20` GiB |
-| RDS master username | `lovv_admin` |
+| RDS master username | `lovvadmin` |
 | RDS deletion protection | `true` |
 | DynamoDB prefix | `lovv_dev_` |
 | S3 image bucket | `lovv-image-dev-{AWS::AccountId}` |
@@ -102,7 +102,7 @@ After CloudFormation creates the RDS instance, apply the SQL schema with a MySQL
 $rdsHost = aws ssm get-parameter --name /lovv/dev/rds/host --query "Parameter.Value" --output text
 $dbName = aws ssm get-parameter --name /lovv/dev/rds/db_name --query "Parameter.Value" --output text
 
-mysql --host $rdsHost --user lovv_admin --database $dbName < infra/data-stack/rds/schema.sql
+mysql --host $rdsHost --user lovvadmin --database $dbName < infra/data-stack/rds/schema.sql
 ```
 
 Retrieve the generated password from Secrets Manager using the ARN stored at:
@@ -366,7 +366,7 @@ aws ssm start-session `
 Then connect locally through:
 
 ```powershell
-mysql --host 127.0.0.1 --port 13306 --user lovv_admin --database lovv_dev
+mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovv_dev
 ```
 
 ## 10.4 Bastion SSH Port Forwarding Option
@@ -382,7 +382,7 @@ ssh -N `
 Then connect locally through:
 
 ```powershell
-mysql --host 127.0.0.1 --port 13306 --user lovv_admin --database lovv_dev
+mysql --host 127.0.0.1 --port 13306 --user lovvadmin --database lovv_dev
 ```
 
 ## 10.5 Temporary Public Access Option

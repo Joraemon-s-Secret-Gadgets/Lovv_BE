@@ -127,3 +127,9 @@ No live validation was run in this repository session.
 Reason:
 
 - AWS deployment and RDS schema application require target AWS credentials, account state, region, profile, and private network access decisions.
+
+# 9. Follow-up Fix
+
+- RDS for MySQL master username is standardized as `lovvadmin`.
+- The previous `lovv_admin` form can pass CloudFormation template validation but may fail during actual RDS creation because MySQL master usernames should use letters and numbers only.
+- The template validation pattern now rejects underscores for `DBMasterUsername`.
