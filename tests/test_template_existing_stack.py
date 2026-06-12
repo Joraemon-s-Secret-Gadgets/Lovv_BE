@@ -50,6 +50,40 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin", self.template)
         self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
 
+    def test_auth_function_exposes_cognito_bridge_route_without_cognito_infra_cutover(self):
+        self.assertIn("AuthCognitoSession:", self.template)
+        self.assertIn("Path: /api/v1/auth/cognito/session", self.template)
+
+    def test_cognito_bridge_route_uses_cognito_jwt_authorizer(self):
+        self.assertIn("LovvCognitoJwtAuthorizer:", self.template)
+        self.assertIn("JwtConfiguration:", self.template)
+        self.assertIn('IdentitySource: "$request.header.Authorization"', self.template)
+        self.assertIn("Authorizer: LovvCognitoJwtAuthorizer", self.template)
+
+    def test_template_defines_optional_cognito_poc_resources(self):
+        for expected in (
+            "EnableCognitoPoC:",
+            "CreateCognitoPoC:",
+            "LovvCognitoUserPool:",
+            "Type: AWS::Cognito::UserPool",
+            "LovvGoogleIdentityProvider:",
+            "ProviderType: Google",
+            "LovvKakaoIdentityProvider:",
+            "ProviderType: OIDC",
+            "oidc_issuer: !Ref CognitoKakaoOidcIssuer",
+            "LovvCognitoUserPoolClient:",
+            "AllowedOAuthFlowsUserPoolClient: true",
+            "AllowedOAuthFlows:",
+            "- code",
+            "LovvCognitoUserPoolDomain:",
+            "Type: AWS::Cognito::UserPoolDomain",
+        ):
+            self.assertIn(expected, self.template)
+
+        for secret_parameter in ("CognitoGoogleClientSecret:", "CognitoKakaoClientSecret:"):
+            index = self.template.index(secret_parameter)
+            self.assertIn("NoEcho: true", self.template[index : index + 160])
+
 
 class ExistingDataStackSchemaTest(unittest.TestCase):
     def test_user_preferences_country_track_allows_api_fallback(self):

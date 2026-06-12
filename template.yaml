@@ -81,6 +81,67 @@ Parameters:
     Default: ''
     NoEcho: true
     Description: Optional Kakao client secret used when Kakao authorization-code exchange requires it.
+  EnableCognitoPoC:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Create Cognito User Pool, Hosted UI, Google IdP, and Kakao OIDC IdP PoC resources when true.
+  CognitoJwtIssuer:
+    Type: String
+    Default: https://replace-with-cognito-issuer.example
+    Description: Existing Cognito JWT issuer for the bridge route when EnableCognitoPoC is false.
+  CognitoJwtAudience:
+    Type: String
+    Default: replace-with-cognito-app-client-id
+    Description: Existing Cognito app client id for the bridge route when EnableCognitoPoC is false.
+  CognitoUserPoolName:
+    Type: String
+    Default: lovv-auth-users
+    Description: Cognito User Pool name for the PoC resources.
+  CognitoUserPoolClientName:
+    Type: String
+    Default: lovv-web
+    Description: Cognito User Pool app client name for Hosted UI auth code flow.
+  CognitoHostedUiDomainPrefix:
+    Type: String
+    Default: lovv-auth-replace-me
+    Description: Globally unique Cognito Hosted UI domain prefix. Replace before deployment.
+  CognitoCallbackUrls:
+    Type: CommaDelimitedList
+    Default: http://localhost:5173/auth/callback
+    Description: Comma-separated Cognito OAuth callback URLs. Use HTTPS except localhost/127.0.0.1.
+  CognitoLogoutUrls:
+    Type: CommaDelimitedList
+    Default: http://localhost:5173/
+    Description: Comma-separated Cognito OAuth logout redirect URLs. Use HTTPS except localhost/127.0.0.1.
+  CognitoGoogleClientId:
+    Type: String
+    Default: ''
+    Description: Google OAuth client id for Cognito Hosted UI.
+  CognitoGoogleClientSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Google OAuth client secret for Cognito Hosted UI. Provide through deploy parameters or CI secrets.
+  CognitoKakaoClientId:
+    Type: String
+    Default: ''
+    Description: Kakao OIDC client id for Cognito Hosted UI.
+  CognitoKakaoClientSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Kakao OIDC client secret for Cognito Hosted UI. Provide through deploy parameters or CI secrets.
+  CognitoKakaoOidcIssuer:
+    Type: String
+    Default: https://kauth.kakao.com
+    Description: Kakao OIDC issuer URL for Cognito OIDC IdP.
+  CognitoKakaoAuthorizeScopes:
+    Type: String
+    Default: openid profile_nickname profile_image account_email
+    Description: Kakao OIDC scopes requested by Cognito.
   RdsHost:
     Type: String
     Description: Existing Lovv Data Stack RDS endpoint host.
@@ -135,6 +196,9 @@ Globals:
         CORS_ALLOW_ORIGIN: !Select [0, !Split [",", !Ref AllowedCorsOrigin]]
         CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin
 
+Conditions:
+  CreateCognitoPoC: !Equals [!Ref EnableCognitoPoC, 'true']
+
 Resources:
   LovvHttpApi:
     Type: AWS::Serverless::HttpApi
@@ -162,6 +226,118 @@ Resources:
             Identity:
               Headers:
                 - Authorization
+          LovvCognitoJwtAuthorizer:
+            JwtConfiguration:
+              issuer: !If
+                - CreateCognitoPoC
+                - !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LovvCognitoUserPool}
+                - !Ref CognitoJwtIssuer
+              audience:
+                - !If
+                  - CreateCognitoPoC
+                  - !Ref LovvCognitoUserPoolClient
+                  - !Ref CognitoJwtAudience
+            IdentitySource: "$request.header.Authorization"
+
+  LovvCognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Condition: CreateCognitoPoC
+    Properties:
+      UserPoolName: !Ref CognitoUserPoolName
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Schema:
+        - Name: email
+          Required: false
+          Mutable: true
+        - Name: name
+          Required: false
+          Mutable: true
+        - Name: picture
+          Required: false
+          Mutable: true
+
+  LovvGoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: CreateCognitoPoC
+    Properties:
+      UserPoolId: !Ref LovvCognitoUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref CognitoGoogleClientId
+        client_secret: !Ref CognitoGoogleClientSecret
+        authorize_scopes: profile email openid
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  LovvKakaoIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: CreateCognitoPoC
+    Properties:
+      UserPoolId: !Ref LovvCognitoUserPool
+      ProviderName: Kakao
+      ProviderType: OIDC
+      ProviderDetails:
+        client_id: !Ref CognitoKakaoClientId
+        client_secret: !Ref CognitoKakaoClientSecret
+        attributes_request_method: GET
+        oidc_issuer: !Ref CognitoKakaoOidcIssuer
+        authorize_scopes: !Ref CognitoKakaoAuthorizeScopes
+      AttributeMapping:
+        email: email
+        name: nickname
+        picture: picture
+      IdpIdentifiers:
+        - kakao
+
+  LovvCognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: CreateCognitoPoC
+    DependsOn:
+      - LovvGoogleIdentityProvider
+      - LovvKakaoIdentityProvider
+    Properties:
+      UserPoolId: !Ref LovvCognitoUserPool
+      ClientName: !Ref CognitoUserPoolClientName
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      SupportedIdentityProviders:
+        - Google
+        - Kakao
+      CallbackURLs: !Ref CognitoCallbackUrls
+      LogoutURLs: !Ref CognitoLogoutUrls
+      DefaultRedirectURI: !Select [0, !Ref CognitoCallbackUrls]
+      ReadAttributes:
+        - email
+        - email_verified
+        - name
+        - picture
+      WriteAttributes:
+        - email
+        - name
+        - picture
+
+  LovvCognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Condition: CreateCognitoPoC
+    Properties:
+      Domain: !Ref CognitoHostedUiDomainPrefix
+      UserPoolId: !Ref LovvCognitoUserPool
 
   AppFunctionSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -234,6 +410,14 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: POST
             Path: /api/v1/auth/kakao
+        AuthCognitoSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/auth/cognito/session
+            Auth:
+              Authorizer: LovvCognitoJwtAuthorizer
         AuthMe:
           Type: HttpApi
           Properties:
@@ -467,3 +651,19 @@ Outputs:
   AuthSessionsTableName:
     Description: DynamoDB table for refresh sessions with TTL.
     Value: !Ref AuthSessionsTableName
+  CognitoUserPoolId:
+    Condition: CreateCognitoPoC
+    Description: Cognito User Pool id for the PoC.
+    Value: !Ref LovvCognitoUserPool
+  CognitoUserPoolClientId:
+    Condition: CreateCognitoPoC
+    Description: Cognito User Pool app client id for the PoC.
+    Value: !Ref LovvCognitoUserPoolClient
+  CognitoHostedUiBaseUrl:
+    Condition: CreateCognitoPoC
+    Description: Cognito Hosted UI base URL.
+    Value: !Sub https://${CognitoHostedUiDomainPrefix}.auth.${AWS::Region}.amazoncognito.com
+  CognitoJwtIssuer:
+    Condition: CreateCognitoPoC
+    Description: Cognito JWT issuer for API Gateway JWT authorizer.
+    Value: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LovvCognitoUserPool}
