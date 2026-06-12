@@ -5,7 +5,7 @@ Description: Lovv backend API for social auth, preferences, map/city, mock recom
 Parameters:
   AllowedCorsOrigin:
     Type: String
-    Default: http://localhost:5173
+    Default: http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net
     Description: Comma-separated browser origins allowed to send credentialed API requests.
   MapCityS3Bucket:
     Type: String
@@ -110,11 +110,11 @@ Parameters:
     Description: Globally unique Cognito Hosted UI domain prefix. Replace before deployment.
   CognitoCallbackUrls:
     Type: CommaDelimitedList
-    Default: http://localhost:5173/auth/callback
+    Default: http://localhost:5173/auth/callback/cognito,http://127.0.0.1:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito
     Description: Comma-separated Cognito OAuth callback URLs. Use HTTPS except localhost/127.0.0.1.
   CognitoLogoutUrls:
     Type: CommaDelimitedList
-    Default: http://localhost:5173/
+    Default: http://localhost:5173/,http://127.0.0.1:5173/,https://d3nuef0zacpyj.cloudfront.net/
     Description: Comma-separated Cognito OAuth logout redirect URLs. Use HTTPS except localhost/127.0.0.1.
   CognitoGoogleClientId:
     Type: String
@@ -562,6 +562,7 @@ Resources:
     Properties:
       Handler: small_cities.app.lambda_handler
       Description: Read-only small-city API backed by S3 raw city detail JSON.
+      Timeout: 30
       Environment:
         Variables:
           MAP_CITY_S3_BUCKET: !Ref MapCityS3Bucket

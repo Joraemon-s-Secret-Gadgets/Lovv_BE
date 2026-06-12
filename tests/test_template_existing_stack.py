@@ -49,6 +49,8 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
     def test_template_accepts_comma_separated_cors_origins(self):
         self.assertIn("CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin", self.template)
         self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
+        self.assertIn("Default: http://localhost:5173,http://127.0.0.1:5173", self.template)
+        self.assertIn("https://d3nuef0zacpyj.cloudfront.net", self.template)
 
     def test_auth_function_exposes_cognito_bridge_route_without_cognito_infra_cutover(self):
         self.assertIn("AuthCognitoSession:", self.template)
@@ -83,6 +85,18 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         for secret_parameter in ("CognitoGoogleClientSecret:", "CognitoKakaoClientSecret:"):
             index = self.template.index(secret_parameter)
             self.assertIn("NoEcho: true", self.template[index : index + 160])
+
+    def test_cognito_callback_defaults_match_frontend_bridge_route(self):
+        self.assertIn(
+            "Default: http://localhost:5173/auth/callback/cognito,http://127.0.0.1:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito",
+            self.template,
+        )
+        self.assertIn("CallbackURLs: !Ref CognitoCallbackUrls", self.template)
+        self.assertIn("LogoutURLs: !Ref CognitoLogoutUrls", self.template)
+
+    def test_small_cities_function_timeout_matches_live_marker_smoke_requirement(self):
+        index = self.template.index("SmallCitiesFunction:")
+        self.assertIn("Timeout: 30", self.template[index : index + 260])
 
 
 class ExistingDataStackSchemaTest(unittest.TestCase):

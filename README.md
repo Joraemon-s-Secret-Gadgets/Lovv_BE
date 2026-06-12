@@ -81,7 +81,7 @@ sam deploy --guided \
   --parameter-overrides \
   MapCityS3Bucket=lovv-data-pipeline-dev-925273580929 \
   MapCityS3Prefix=raw/KR/details/20260609/ \
-  AllowedCorsOrigin=http://localhost:5173,https://your-frontend-origin.example \
+  AllowedCorsOrigin=http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net \
   AuthTokenSigningSecret=replace-with-secret-manager-or-ci-value \
   AuthRefreshCookieSameSite=None \
   AuthRefreshCookieSecure=true \
@@ -91,14 +91,14 @@ sam deploy --guided \
   GoogleClientSecret=replace-with-google-web-client-secret \
   KakaoClientId=replace-with-kakao-oidc-client-id \
   KakaoClientSecret=replace-with-kakao-client-secret-if-enabled \
-  EnableCognitoPoC=false \
+  EnableCognitoPoC=true \
   CognitoJwtIssuer=https://replace-with-cognito-issuer.example \
   CognitoJwtAudience=replace-with-cognito-app-client-id \
   CognitoUserPoolName=lovv-auth-users \
   CognitoUserPoolClientName=lovv-web \
   CognitoHostedUiDomainPrefix=replace-with-globally-unique-prefix \
-  CognitoCallbackUrls=http://localhost:5173/auth/callback,https://your-frontend-origin.example/auth/callback \
-  CognitoLogoutUrls=http://localhost:5173/,https://your-frontend-origin.example/ \
+  CognitoCallbackUrls=http://localhost:5173/auth/callback/cognito,http://127.0.0.1:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito \
+  CognitoLogoutUrls=http://localhost:5173/,http://127.0.0.1:5173/,https://d3nuef0zacpyj.cloudfront.net/ \
   CognitoGoogleClientId=replace-with-google-oauth-client-id \
   CognitoGoogleClientSecret=replace-with-google-oauth-client-secret \
   CognitoKakaoClientId=replace-with-kakao-oidc-client-id \
