@@ -1,3 +1,7 @@
+# @file src/saved_plans/repository.py
+# @description Saved itinerary repository backed by the configured SQL client.
+# @lastModified 2026-06-12
+
 import hashlib
 import os
 import uuid
@@ -281,3 +285,6 @@ def _itinerary_with_entry_aliases(itinerary):
     normalized = dict(itinerary)
     normalized["days"] = normalized_days
     return normalized
+
+
+# EOF: src/saved_plans/repository.py

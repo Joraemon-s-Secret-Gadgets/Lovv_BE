@@ -1,3 +1,7 @@
+# @file src/auth/provider_verifier.py
+# @description Verifies Google and Kakao identity credentials for Lovv auth.
+# @lastModified 2026-06-12
+
 import dataclasses
 import json
 import os
@@ -43,6 +47,7 @@ class ProviderVerifier:
 
     def _verify_google(self, credential_type, credential, redirect_uri=None, code_verifier=None):
         if credential_type == "authorization_code":
+            # Code login is only an acquisition step; final trust still comes from ID token validation.
             id_token = self._exchange_google_authorization_code(
                 credential,
                 redirect_uri=redirect_uri,
@@ -77,6 +82,7 @@ class ProviderVerifier:
 
     def _verify_kakao(self, credential_type, credential, nonce=None, redirect_uri=None):
         if credential_type == "authorization_code":
+            # Keep Kakao code login on the same OIDC validation path as direct id_token login.
             id_token = self._exchange_kakao_authorization_code(credential, redirect_uri=redirect_uri)
             return self._verify_kakao("id_token", id_token, nonce=nonce)
         if credential_type != "id_token":
@@ -221,3 +227,6 @@ def _truthy(value):
     if isinstance(value, str):
         return value.lower() == "true"
     return False
+
+
+# EOF: src/auth/provider_verifier.py

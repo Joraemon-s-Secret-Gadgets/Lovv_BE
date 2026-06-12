@@ -1,3 +1,7 @@
+# @file src/preferences/app.py
+# @description Authenticated user preferences Lambda handler.
+# @lastModified 2026-06-12
+
 import base64
 import json
 from datetime import datetime, timezone
@@ -107,6 +111,7 @@ def _read_mapped_themes(body):
     if _is_non_empty_string_list(mapped_themes):
         return mapped_themes
 
+    # Frontend state uses selectedThemeIds; backend storage remains mappedThemes.
     selected_theme_ids = body.get("selectedThemeIds")
     if _is_non_empty_string_list(selected_theme_ids):
         return selected_theme_ids
@@ -179,3 +184,6 @@ def _is_non_empty_string_list(value):
 
 def _now_iso():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# EOF: src/preferences/app.py

@@ -1,3 +1,7 @@
+# @file src/auth/app.py
+# @description Social auth/session Lambda handler for Lovv API.
+# @lastModified 2026-06-12
+
 import base64
 import hashlib
 import json
@@ -133,6 +137,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
 def _handle_me(event, user_repository, preference_repository):
     claims = _authorizer_claims(event)
     if claims is None:
+        # Verify inside Lambda so unauthorized responses still include the shared CORS headers.
         token = extract_bearer_token(event.get("headers") or {})
         claims = verify_access_token(token)
 
@@ -293,6 +298,7 @@ def _cookie_value(value, max_age):
         "HttpOnly",
     ]
     same_site = _cookie_same_site()
+    # Browsers require Secure when SameSite=None is used for cross-site refresh cookies.
     if _cookie_secure() or same_site == "None":
         parts.append("Secure")
     if _cookie_domain():
@@ -403,3 +409,6 @@ class AuthRequestError(Exception):
         self.status_code = status_code
         self.code = code
         self.message = message
+
+
+# EOF: src/auth/app.py

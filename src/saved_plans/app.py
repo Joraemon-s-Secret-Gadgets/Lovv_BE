@@ -1,3 +1,7 @@
+# @file src/saved_plans/app.py
+# @description Authenticated saved itinerary Lambda handler.
+# @lastModified 2026-06-12
+
 import base64
 import json
 from datetime import datetime, timezone
@@ -237,3 +241,6 @@ def _day_entries(day):
 
 def _now_iso():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# EOF: src/saved_plans/app.py

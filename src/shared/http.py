@@ -1,3 +1,7 @@
+# @file src/shared/http.py
+# @description Shared JSON response and CORS header helpers.
+# @lastModified 2026-06-12
+
 import json
 import os
 
@@ -46,6 +50,7 @@ def cors_headers(event=None):
     if origin in allowed_origins:
         headers["Access-Control-Allow-Origin"] = origin
     elif allowed_origins:
+        # Do not reflect untrusted origins; fall back to the first configured allowlist entry.
         headers["Access-Control-Allow-Origin"] = allowed_origins[0]
     if len(allowed_origins) > 1:
         headers["Vary"] = "Origin"
@@ -64,3 +69,6 @@ def _header_value(headers, name):
         if key.lower() == name:
             return value
     return None
+
+
+# EOF: src/shared/http.py

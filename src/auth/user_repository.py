@@ -1,3 +1,7 @@
+# @file src/auth/user_repository.py
+# @description User and social account repository for Lovv auth persistence.
+# @lastModified 2026-06-12
+
 import dataclasses
 import os
 import uuid
@@ -237,3 +241,6 @@ def _user_from_row(row):
         "roles": ["R-USER"],
         "status": row.get("status") or "active",
     }
+
+
+# EOF: src/auth/user_repository.py

@@ -1,3 +1,7 @@
+# @file src/preferences/repository.py
+# @description Preference repository backed by the configured SQL client.
+# @lastModified 2026-06-12
+
 import os
 import uuid
 
@@ -125,3 +129,6 @@ def _preference_from_row(row):
         "createdAt": row.get("created_at"),
         "updatedAt": row.get("updated_at"),
     }
+
+
+# EOF: src/preferences/repository.py

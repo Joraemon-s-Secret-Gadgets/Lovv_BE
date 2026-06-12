@@ -1,3 +1,7 @@
+# @file src/shared/mysql_data.py
+# @description Direct MySQL adapter for existing Lovv Data Stack RDS.
+# @lastModified 2026-06-12
+
 import json
 import os
 import re
@@ -46,6 +50,7 @@ class MySqlClient:
             raise MySqlConfigurationError("MySQL connection configuration is missing")
 
     def execute(self, sql, parameters=None, include_result_metadata=True):
+        # Repositories use RDS Data API-style named parameters; PyMySQL needs positional values.
         translated_sql, values = translate_named_parameters(sql, parameters or {})
         values = [_mysql_parameter_value(value) for value in values]
         connection = self.connection_factory(
@@ -102,6 +107,7 @@ def _api_row(row):
 
 
 def _api_value(value):
+    # Normalize MySQL-native values to the JSON-friendly shape expected by existing API adapters.
     if isinstance(value, datetime):
         if value.tzinfo is not None:
             value = value.astimezone(timezone.utc).replace(tzinfo=None)
@@ -148,3 +154,6 @@ def _dict_cursor_class():
     except ImportError:
         return None
     return pymysql.cursors.DictCursor
+
+
+# EOF: src/shared/mysql_data.py
