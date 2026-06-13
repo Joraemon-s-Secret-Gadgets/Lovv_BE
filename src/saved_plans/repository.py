@@ -283,6 +283,7 @@ def canonical_snapshot_hash(payload):
 
 
 def _build_plan(plan_id, user_id, payload, snapshot_hash, now):
+    conditions_snapshot = _conditions_snapshot(payload)
     return {
         "itineraryId": plan_id,
         "userId": user_id,
@@ -295,7 +296,10 @@ def _build_plan(plan_id, user_id, payload, snapshot_hash, now):
         "tripType": payload.get("tripType"),
         "durationLabel": payload.get("durationLabel"),
         "themes": payload.get("themes") or [],
-        "conditionsSnapshot": payload.get("conditionsSnapshot") or {},
+        "festivalChoice": _detail_field(payload, conditions_snapshot, "festivalChoice"),
+        "festivalThemeLabel": _detail_field(payload, conditions_snapshot, "festivalThemeLabel"),
+        "intensityLabel": _detail_field(payload, conditions_snapshot, "intensityLabel"),
+        "conditionsSnapshot": conditions_snapshot,
         "requestSummary": payload.get("requestSummary"),
         "itinerary": _itinerary_with_entry_aliases(payload.get("itinerary") or {}),
         "alternativeItinerary": payload.get("alternativeItinerary"),
@@ -353,6 +357,7 @@ def _summary_from_row(row):
 def _plan_from_row(row):
     if not row:
         return None
+    conditions_snapshot = json_loads(row.get("conditions_snapshot_json"), {})
     return {
         "itineraryId": row.get("id"),
         "userId": row.get("user_id"),
@@ -365,7 +370,10 @@ def _plan_from_row(row):
         "tripType": row.get("trip_type"),
         "durationLabel": row.get("duration_label"),
         "themes": json_loads(row.get("themes_json"), []),
-        "conditionsSnapshot": json_loads(row.get("conditions_snapshot_json"), {}),
+        "festivalChoice": conditions_snapshot.get("festivalChoice"),
+        "festivalThemeLabel": conditions_snapshot.get("festivalThemeLabel"),
+        "intensityLabel": conditions_snapshot.get("intensityLabel"),
+        "conditionsSnapshot": conditions_snapshot,
         "requestSummary": row.get("request_summary"),
         "itinerary": _itinerary_with_entry_aliases(json_loads(row.get("itinerary_json"), {})),
         "alternativeItinerary": json_loads(row.get("alternative_itinerary_json"), None),
@@ -374,6 +382,19 @@ def _plan_from_row(row):
         "updatedAt": row.get("updated_at"),
         "deletedAt": row.get("deleted_at"),
     }
+
+
+def _conditions_snapshot(payload):
+    snapshot = payload.get("conditionsSnapshot")
+    snapshot = dict(snapshot) if isinstance(snapshot, dict) else {}
+    for field in ("festivalChoice", "festivalThemeLabel", "intensityLabel"):
+        if payload.get(field) is not None and snapshot.get(field) is None:
+            snapshot[field] = payload.get(field)
+    return snapshot
+
+
+def _detail_field(payload, conditions_snapshot, field):
+    return payload.get(field) if payload.get(field) is not None else conditions_snapshot.get(field)
 
 
 def _itinerary_with_entry_aliases(itinerary):

@@ -35,6 +35,9 @@ def save_payload(**overrides):
         "tripType": "2d1n",
         "durationLabel": "1박 2일",
         "themes": ["food_local"],
+        "festivalChoice": "include",
+        "festivalThemeLabel": "축제 포함",
+        "intensityLabel": "덜 걷는 일정",
         "conditionsSnapshot": {"travelMonth": 10},
         "requestSummary": "조용한 바다와 미식",
         "itinerary": {
@@ -48,9 +51,32 @@ def save_payload(**overrides):
                 }
             ]
         },
+        "alternativeItinerary": {"trigger": "rain", "days": []},
     }
     payload.update(overrides)
     return payload
+
+
+def response_body(response):
+    return json.loads(response["body"])
+
+
+def frontend_adapter_shape(plan):
+    days = (plan.get("itinerary") or {}).get("days")
+    first_day = days[0] if isinstance(days, list) and days else {}
+    return {
+        "itineraryId": plan.get("itineraryId"),
+        "title": plan.get("title"),
+        "destination": plan.get("destination"),
+        "durationLabel": plan.get("durationLabel"),
+        "themes": plan.get("themes"),
+        "isLiked": plan.get("isLiked"),
+        "hasDays": isinstance(days, list) and bool(days),
+        "hasItems": isinstance(first_day.get("items"), list) and bool(first_day.get("items")),
+        "hasStops": isinstance(first_day.get("stops"), list) and bool(first_day.get("stops")),
+        "firstItemTitle": first_day.get("items", [{}])[0].get("title") if first_day.get("items") else None,
+        "firstStopTitle": first_day.get("stops", [{}])[0].get("title") if first_day.get("stops") else None,
+    }
 
 
 class SavedPlansAppTest(unittest.TestCase):
@@ -58,14 +84,30 @@ class SavedPlansAppTest(unittest.TestCase):
         self.repository = InMemorySavedPlanRepository(now="2026-06-10T09:00:00Z")
 
     def test_saves_generated_itinerary_snapshot(self):
+        payload = save_payload()
         response = handle_request(
-            make_event("POST", "/api/v1/me/itineraries", save_payload()),
+            make_event("POST", "/api/v1/me/itineraries", payload),
             repository=self.repository,
         )
         body = json.loads(response["body"])
 
         self.assertEqual(response["statusCode"], 201)
+        self.assertEqual(body["title"], payload["title"])
         self.assertEqual(body["sourceRecommendationId"], "rec-1")
+        self.assertEqual(body["destination"], payload["destination"])
+        self.assertEqual(body["durationLabel"], payload["durationLabel"])
+        self.assertEqual(body["themes"], payload["themes"])
+        self.assertEqual(body["itinerary"]["days"][0]["items"][0]["title"], payload["itinerary"]["days"][0]["items"][0]["title"])
+        self.assertEqual(body["itinerary"]["days"][0]["stops"][0]["title"], payload["itinerary"]["days"][0]["items"][0]["title"])
+        self.assertEqual(body["festivalChoice"], payload["festivalChoice"])
+        self.assertEqual(body["festivalThemeLabel"], payload["festivalThemeLabel"])
+        self.assertEqual(body["intensityLabel"], payload["intensityLabel"])
+        self.assertEqual(body["conditionsSnapshot"]["travelMonth"], 10)
+        self.assertEqual(body["conditionsSnapshot"]["festivalChoice"], payload["festivalChoice"])
+        self.assertEqual(body["conditionsSnapshot"]["festivalThemeLabel"], payload["festivalThemeLabel"])
+        self.assertEqual(body["conditionsSnapshot"]["intensityLabel"], payload["intensityLabel"])
+        self.assertEqual(body["alternativeItinerary"], payload["alternativeItinerary"])
+        self.assertFalse(body["isLiked"])
         self.assertFalse(body["duplicate"])
         self.assertIn(body["itineraryId"], self.repository.plans)
         self.assertEqual(self.repository.plans[body["itineraryId"]]["userId"], "user-1")
@@ -79,6 +121,11 @@ class SavedPlansAppTest(unittest.TestCase):
         self.assertEqual(first["statusCode"], 201)
         self.assertEqual(second["statusCode"], 200)
         self.assertEqual(first_body["itineraryId"], second_body["itineraryId"])
+        self.assertEqual(second_body["title"], first_body["title"])
+        self.assertEqual(second_body["destination"], first_body["destination"])
+        self.assertEqual(second_body["durationLabel"], first_body["durationLabel"])
+        self.assertEqual(second_body["themes"], first_body["themes"])
+        self.assertEqual(second_body["itinerary"], first_body["itinerary"])
         self.assertTrue(second_body["duplicate"])
 
     def test_rejects_raw_chat_history_fields(self):
@@ -100,8 +147,15 @@ class SavedPlansAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(len(body["items"]), 1)
-        self.assertEqual(body["items"][0]["title"], "내 일정")
-        self.assertEqual(body["items"][0]["itinerary"]["days"][0]["stops"][0]["title"], "안목해변")
+        item = body["items"][0]
+        self.assertEqual(item["title"], "내 일정")
+        self.assertEqual(item["itineraryId"], "plan-1")
+        self.assertEqual(item["destination"]["destinationId"], "KR-Gangneung")
+        self.assertEqual(item["durationLabel"], "1박 2일")
+        self.assertEqual(item["themes"], ["food_local"])
+        self.assertEqual(item["itinerary"]["days"][0]["stops"][0]["title"], "안목해변")
+        self.assertEqual(item["itinerary"]["days"][0]["items"][0]["title"], "안목해변")
+        self.assertFalse(item["isLiked"])
 
     def test_accepts_frontend_stops_snapshot_and_returns_items_alias(self):
         frontend_payload = save_payload(
@@ -133,13 +187,228 @@ class SavedPlansAppTest(unittest.TestCase):
 
         detail_body = json.loads(detail["body"])
         list_body = json.loads(listed["body"])
+        saved_body = json.loads(saved["body"])
+        saved_day = saved_body["itinerary"]["days"][0]
         detail_day = detail_body["itinerary"]["days"][0]
         list_day = list_body["items"][0]["itinerary"]["days"][0]
         self.assertEqual(saved["statusCode"], 201)
+        self.assertEqual(saved_day["stops"][0]["title"], "경포호")
+        self.assertEqual(saved_day["items"][0]["title"], "경포호")
         self.assertEqual(detail_day["stops"][0]["title"], "경포호")
         self.assertEqual(detail_day["items"][0]["title"], "경포호")
         self.assertEqual(list_day["stops"][0]["title"], "경포호")
         self.assertEqual(list_day["items"][0]["title"], "경포호")
+
+    def test_detail_returns_richer_plan_fields_than_list(self):
+        saved = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+        itinerary_id = json.loads(saved["body"])["itineraryId"]
+
+        listed = handle_request(make_event("GET", "/api/v1/me/itineraries"), repository=self.repository)
+        detail = handle_request(
+            make_event(
+                "GET",
+                f"/api/v1/me/itineraries/{itinerary_id}",
+                path_parameters={"itineraryId": itinerary_id},
+            ),
+            repository=self.repository,
+        )
+        list_item = json.loads(listed["body"])["items"][0]
+        detail_body = json.loads(detail["body"])
+
+        self.assertEqual(detail["statusCode"], 200)
+        self.assertEqual(detail_body["itineraryId"], list_item["itineraryId"])
+        self.assertEqual(detail_body["title"], list_item["title"])
+        self.assertEqual(detail_body["destination"], list_item["destination"])
+        self.assertEqual(detail_body["durationLabel"], list_item["durationLabel"])
+        self.assertEqual(detail_body["themes"], list_item["themes"])
+        self.assertEqual(detail_body["itinerary"], list_item["itinerary"])
+        self.assertEqual(detail_body["isLiked"], list_item["isLiked"])
+        self.assertEqual(detail_body["conditionsSnapshot"]["travelMonth"], 10)
+        self.assertEqual(detail_body["requestSummary"], "조용한 바다와 미식")
+        self.assertEqual(detail_body["alternativeItinerary"], {"trigger": "rain", "days": []})
+        self.assertEqual(detail_body["festivalChoice"], "include")
+        self.assertEqual(detail_body["festivalThemeLabel"], "축제 포함")
+        self.assertEqual(detail_body["intensityLabel"], "덜 걷는 일정")
+        self.assertNotIn("conditionsSnapshot", list_item)
+        self.assertNotIn("requestSummary", list_item)
+        self.assertNotIn("alternativeItinerary", list_item)
+
+    def test_list_item_shape_keeps_frontend_fields_and_excludes_detail_only_fields(self):
+        handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+
+        response = handle_request(make_event("GET", "/api/v1/me/itineraries"), repository=self.repository)
+        body = response_body(response)
+        item = body["items"][0]
+
+        self.assertEqual(response["statusCode"], 200)
+        for field in ("itineraryId", "title", "destination", "durationLabel", "themes", "itinerary", "isLiked"):
+            self.assertIn(field, item)
+        self.assertIsInstance(item["itinerary"].get("days"), list)
+        self.assertTrue(item["itinerary"]["days"])
+        for detail_only_field in ("conditionsSnapshot", "requestSummary", "alternativeItinerary"):
+            self.assertNotIn(detail_only_field, item)
+
+    def test_create_response_matches_detail_core_fields_for_immediate_frontend_use(self):
+        created = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+        create_body = response_body(created)
+        itinerary_id = create_body["itineraryId"]
+
+        detail = handle_request(
+            make_event(
+                "GET",
+                f"/api/v1/me/itineraries/{itinerary_id}",
+                path_parameters={"itineraryId": itinerary_id},
+            ),
+            repository=self.repository,
+        )
+        detail_body = response_body(detail)
+
+        self.assertEqual(created["statusCode"], 201)
+        for field in (
+            "itineraryId",
+            "title",
+            "destination",
+            "durationLabel",
+            "themes",
+            "itinerary",
+            "isLiked",
+            "savedAt",
+            "updatedAt",
+        ):
+            self.assertIn(field, create_body)
+            self.assertEqual(create_body[field], detail_body[field])
+
+    def test_create_list_and_detail_share_frontend_adapter_shape(self):
+        created = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+        create_body = response_body(created)
+        itinerary_id = create_body["itineraryId"]
+        listed = handle_request(make_event("GET", "/api/v1/me/itineraries"), repository=self.repository)
+        detail = handle_request(
+            make_event(
+                "GET",
+                f"/api/v1/me/itineraries/{itinerary_id}",
+                path_parameters={"itineraryId": itinerary_id},
+            ),
+            repository=self.repository,
+        )
+
+        list_item = response_body(listed)["items"][0]
+        detail_body = response_body(detail)
+
+        self.assertEqual(frontend_adapter_shape(create_body), frontend_adapter_shape(list_item))
+        self.assertEqual(frontend_adapter_shape(create_body), frontend_adapter_shape(detail_body))
+
+    def test_like_state_is_reflected_in_list_and_detail_shapes(self):
+        created = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+        itinerary_id = response_body(created)["itineraryId"]
+
+        liked = handle_request(
+            make_event(
+                "PUT",
+                f"/api/v1/me/itineraries/{itinerary_id}/reactions/like",
+                path_parameters={"itineraryId": itinerary_id},
+            ),
+            repository=self.repository,
+        )
+        listed = handle_request(make_event("GET", "/api/v1/me/itineraries"), repository=self.repository)
+        detail = handle_request(
+            make_event(
+                "GET",
+                f"/api/v1/me/itineraries/{itinerary_id}",
+                path_parameters={"itineraryId": itinerary_id},
+            ),
+            repository=self.repository,
+        )
+
+        self.assertEqual(liked["statusCode"], 200)
+        self.assertTrue(response_body(listed)["items"][0]["isLiked"])
+        self.assertTrue(response_body(detail)["isLiked"])
+
+    def test_list_limit_query_caps_items_and_returns_cursor_field(self):
+        for index in range(3):
+            handle_request(
+                make_event(
+                    "POST",
+                    "/api/v1/me/itineraries",
+                    save_payload(
+                        sourceRecommendationId=f"rec-{index}",
+                        idempotencyKey=f"idem-{index}",
+                        title=f"saved plan {index}",
+                    ),
+                ),
+                repository=self.repository,
+            )
+
+        response = handle_request(
+            make_event("GET", "/api/v1/me/itineraries", query={"limit": "1"}),
+            repository=self.repository,
+        )
+        body = response_body(response)
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(len(body["items"]), 1)
+        self.assertIn("nextCursor", body)
+
+    def test_minimum_itinerary_payloads_return_items_and_stops_aliases_everywhere(self):
+        cases = [
+            (
+                "items-only",
+                {
+                    "days": [
+                        {
+                            "day": 1,
+                            "title": "items day",
+                            "items": [{"itemId": "item-only", "sortOrder": 1, "title": "items title"}],
+                        }
+                    ]
+                },
+            ),
+            (
+                "stops-only",
+                {
+                    "days": [
+                        {
+                            "day": 1,
+                            "title": "stops day",
+                            "stops": [{"itemId": "stop-only", "sortOrder": 1, "title": "stops title"}],
+                        }
+                    ]
+                },
+            ),
+        ]
+
+        for index, (name, itinerary) in enumerate(cases):
+            with self.subTest(name=name):
+                created = handle_request(
+                    make_event(
+                        "POST",
+                        "/api/v1/me/itineraries",
+                        save_payload(
+                            sourceRecommendationId=f"alias-rec-{index}",
+                            idempotencyKey=f"alias-idem-{index}",
+                            itinerary=itinerary,
+                        ),
+                    ),
+                    repository=self.repository,
+                )
+                create_body = response_body(created)
+                itinerary_id = create_body["itineraryId"]
+                listed = handle_request(make_event("GET", "/api/v1/me/itineraries"), repository=self.repository)
+                detail = handle_request(
+                    make_event(
+                        "GET",
+                        f"/api/v1/me/itineraries/{itinerary_id}",
+                        path_parameters={"itineraryId": itinerary_id},
+                    ),
+                    repository=self.repository,
+                )
+                list_item = next(item for item in response_body(listed)["items"] if item["itineraryId"] == itinerary_id)
+
+                for response_plan in (create_body, list_item, response_body(detail)):
+                    day = response_plan["itinerary"]["days"][0]
+                    self.assertTrue(day["items"])
+                    self.assertTrue(day["stops"])
+                    self.assertEqual(day["items"][0]["title"], day["stops"][0]["title"])
 
     def test_detail_requires_plan_ownership(self):
         saved = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
