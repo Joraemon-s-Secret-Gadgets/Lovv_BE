@@ -271,6 +271,67 @@ Resources:
         - Key: Environment
           Value: !Ref EnvName
 
+  # 선택 NAT 인스턴스 보안 그룹이다. public SSH는 열지 않고 VPC 내부 트래픽만 NAT 대상으로 받는다.
+  LovvNatInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateNatInstance
+    Properties:
+      GroupDescription: !Sub Lovv ${EnvName} optional NAT instance access
+      VpcId: !Ref LovvDevVPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: !Ref VpcCidr
+          Description: Development VPC traffic to NAT instance
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub lovv-${EnvName}-nat-instance-sg
+        - Key: Project
+          Value: Lovv
+        - Key: Environment
+          Value: !Ref EnvName
+
+  # NAT 인스턴스 운영 접근은 SSM Session Manager만 사용한다.
+  LovvNatInstanceRole:
+    Type: AWS::IAM::Role
+    Condition: CreateNatInstance
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Project
+          Value: Lovv
+        - Key: Environment
+          Value: !Ref EnvName
+
+  LovvNatInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Condition: CreateNatInstance
+    Properties:
+      Roles:
+        - !Ref LovvNatInstanceRole
+
+  # SSM port forwarding으로 NAT 인스턴스를 경유해 private RDS에 접속할 때만 MySQL을 허용한다.
+  LovvRDSIngressFromNatInstance:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateNatInstance
+    Properties:
+      GroupId: !Ref LovvRDSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !Ref LovvNatInstanceSecurityGroup
+      Description: MySQL access from optional NAT instance for SSM port forwarding
+
   # Secrets Manager VPC Endpoint: VPC 내부 Lambda가 RDS secret 값을 private 경로로 조회한다.
   SecretsManagerVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint

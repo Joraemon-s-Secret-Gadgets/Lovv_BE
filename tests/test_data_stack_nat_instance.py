@@ -68,6 +68,18 @@ class DataStackNatInstanceTest(unittest.TestCase):
 
         self.assertIn("PubliclyAccessible: false", rds)
 
+    def test_nat_instance_can_reach_private_rds_without_public_mysql(self):
+        ingress = self._block("LovvRDSIngressFromNatInstance", "SecretsManagerVpcEndpoint")
+
+        self.assertIn("Type: AWS::EC2::SecurityGroupIngress", ingress)
+        self.assertIn("Condition: CreateNatInstance", ingress)
+        self.assertIn("GroupId: !Ref LovvRDSSecurityGroup", ingress)
+        self.assertIn("IpProtocol: tcp", ingress)
+        self.assertIn("FromPort: 3306", ingress)
+        self.assertIn("ToPort: 3306", ingress)
+        self.assertIn("SourceSecurityGroupId: !Ref LovvNatInstanceSecurityGroup", ingress)
+        self.assertNotIn("CidrIp: 0.0.0.0/0", ingress)
+
     def test_nat_identifiers_are_published_conditionally(self):
         for expected in (
             "/lovv/${EnvName}/network/public_subnet_a",
