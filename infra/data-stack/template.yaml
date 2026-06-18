@@ -35,10 +35,21 @@ Parameters:
       - "true"
       - "false"
     Description: Keep true for production-like environments.
+  EnableNatInstance:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable the optional dev NAT instance for private subnet internet egress.
   VpcCidr:
     Type: String
     Default: 10.40.0.0/16
     Description: Development VPC CIDR for the data stack.
+  PublicSubnetCidr:
+    Type: String
+    Default: 10.40.1.0/24
+    Description: Development public subnet CIDR for the optional NAT instance.
   PrivateSubnetACidr:
     Type: String
     Default: 10.40.10.0/24
@@ -51,10 +62,19 @@ Parameters:
     Type: String
     Default: 10.40.0.0/16
     Description: CIDR allowed to connect to MySQL in development.
+  NatInstanceType:
+    Type: String
+    Default: t4g.nano
+    Description: EC2 instance type for the optional dev NAT instance.
+  NatInstanceAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux 2023 ARM64 AMI for the optional dev NAT instance.
 
 # 조건: RDS 삭제 보호는 파라미터로 켜고 끌 수 있지만, 기본값은 보호 활성화이다.
 Conditions:
   EnableRDSDeletionProtection: !Equals [!Ref RDSDeletionProtection, "true"]
+  CreateNatInstance: !Equals [!Ref EnableNatInstance, "true"]
 
 Resources:
   # 개발용 VPC: SAM 앱 스택과 분리된 stateful Data Stack 네트워크 경계이다.
