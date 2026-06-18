@@ -5,7 +5,6 @@
 import base64
 import hashlib
 import json
-import logging
 import os
 import re
 import secrets
@@ -19,9 +18,10 @@ from preferences.app import public_preference
 from preferences.repository import RdsDataPreferenceRepository
 from shared.auth import AuthTokenError, create_access_token, extract_bearer_token, verify_access_token
 from shared.http import empty_response, error_response, json_response
+from shared.logger import Tag, get_logger
 
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 
 # Each MySqlClient.execute() call opens a brand-new TCP connection to RDS over the VPC and closes
@@ -68,6 +68,7 @@ def handle_request(event, provider_verifier=None, user_repository=None, session_
         return error_response(error.status_code, error.code, error.message)
     except Exception as error:
         LOGGER.exception(
+            Tag.SYSTEM,
             "Unhandled auth API error: %s: %s",
             error.__class__.__name__,
             _safe_error_message(error),
@@ -142,6 +143,7 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
 
 
 def _handle_social_login(provider, event, provider_verifier, user_repository, session_repository, preference_repository):
+    LOGGER.info(Tag.AUTH, "Social login initiated for %s", provider)
     body = _json_body(event)
     credential_type = body.get("credentialType")
     credential = body.get("credential") or body.get("providerToken")
@@ -158,6 +160,13 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
     )
     now_iso = _now_iso()
     user_result = user_repository.upsert_from_provider(identity, now_iso)
+    LOGGER.info(
+        Tag.DB,
+        "User profile upserted from %s provider (userId=%s, newUser=%s)",
+        provider,
+        user_result.user["userId"],
+        user_result.is_new_user,
+    )
     refresh_token = secrets.token_urlsafe(48)
     expires_at_epoch = _now_epoch() + _refresh_ttl_seconds()
     refresh_token_hash = _hash_token(refresh_token)
@@ -434,6 +443,7 @@ def _handle_logout(event, session_repository):
         session_id = _session_id_from_bearer(event)
     if session_id:
         session_repository.revoke_session(session_id, now_epoch=_now_epoch())
+        LOGGER.info(Tag.AUTH, "Session revoked on logout (sessionId=%s)", session_id)
     if not refresh_token and not session_id:
         return empty_response(204, headers={"Set-Cookie": _clear_session_cookie()})
     return json_response(200, {"success": True}, headers={"Set-Cookie": _clear_session_cookie()})

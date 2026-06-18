@@ -10,6 +10,10 @@ from preferences.repository import RdsDataPreferenceRepository
 from shared.auth import AuthTokenError
 from shared.current_user import authenticated_claims
 from shared.http import error_response, json_response
+from shared.logger import Tag, get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 COUNTRY_TRACKS = {"KR", "JP"}
@@ -38,6 +42,7 @@ def handle_request(event, repository=None):
     except AuthTokenError as error:
         return error_response(error.status_code, error.code, error.message)
     except Exception:
+        LOGGER.exception(Tag.SYSTEM, "Unhandled preference API error")
         return error_response(500, "INTERNAL_ERROR", "Preference API is unavailable")
 
 
@@ -61,6 +66,13 @@ def _handle_request(event, repository=None):
     if method == "PUT":
         payload = _validate_payload(_json_body(event))
         preference = repository.upsert(user_id, payload, _now_iso())
+        LOGGER.info(
+            Tag.PREF,
+            "Preferences updated (userId=%s, countryTrack=%s, themes=%s)",
+            user_id,
+            payload.get("countryTrack"),
+            len(payload.get("mappedThemes") or []),
+        )
         return json_response(200, {"preferences": public_preference(preference)})
 
     return error_response(405, "INVALID_METHOD", "Only GET and PUT are supported")
