@@ -380,6 +380,51 @@ Resources:
       RouteTableIds:
         - !Ref LovvPrivateRouteTable
 
+  # 선택 NAT 인스턴스: dev에서 private subnet의 public HTTPS egress가 필요할 때만 생성한다.
+  LovvNatInstance:
+    Type: AWS::EC2::Instance
+    Condition: CreateNatInstance
+    Properties:
+      ImageId: !Ref NatInstanceAmiId
+      InstanceType: !Ref NatInstanceType
+      IamInstanceProfile: !Ref LovvNatInstanceProfile
+      SubnetId: !Ref LovvPublicSubnetA
+      SecurityGroupIds:
+        - !Ref LovvNatInstanceSecurityGroup
+      SourceDestCheck: false
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          sysctl -w net.ipv4.ip_forward=1
+          grep -q '^net.ipv4.ip_forward = 1' /etc/sysctl.conf || echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+          dnf install -y iptables-services
+          iptables -t nat -C POSTROUTING -o ens5 -j MASQUERADE || iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
+          service iptables save
+          systemctl enable iptables
+          systemctl restart iptables
+      Tags:
+        - Key: Name
+          Value: !Sub lovv-${EnvName}-nat-instance
+        - Key: Project
+          Value: Lovv
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: StackBoundary
+          Value: DataStack
+
+  LovvPrivateDefaultRouteToNatInstance:
+    Type: AWS::EC2::Route
+    Condition: CreateNatInstance
+    DependsOn: LovvNatInstance
+    Properties:
+      RouteTableId: !Ref LovvPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref LovvNatInstance
+
   # RDS DB subnet group: RDS가 public subnet이 아닌 private subnet에 생성되도록 강제한다.
   LovvDBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
