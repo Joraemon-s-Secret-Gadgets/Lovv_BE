@@ -113,12 +113,7 @@ def _save_plan(event, user_id, repository):
     )
     return json_response(
         200 if duplicate else 201,
-        {
-            "itineraryId": plan["itineraryId"],
-            "sourceRecommendationId": plan.get("sourceRecommendationId"),
-            "savedAt": plan.get("savedAt"),
-            "duplicate": bool(duplicate),
-        },
+        _public_save_response(plan, duplicate),
     )
 
 
@@ -216,6 +211,7 @@ def _public_detail(plan):
         "durationLabel": plan.get("durationLabel"),
         "themes": plan.get("themes") or [],
         "festivalChoice": plan.get("festivalChoice"),
+        "festivalThemeLabel": plan.get("festivalThemeLabel"),
         "intensityLabel": plan.get("intensityLabel"),
         "conditionsSnapshot": plan.get("conditionsSnapshot") or {},
         "requestSummary": plan.get("requestSummary"),
@@ -225,6 +221,12 @@ def _public_detail(plan):
         "savedAt": plan.get("savedAt"),
         "updatedAt": plan.get("updatedAt"),
     }
+
+
+def _public_save_response(plan, duplicate):
+    response = _public_detail(plan)
+    response["duplicate"] = bool(duplicate)
+    return response
 
 
 def _hash_payload(payload):
