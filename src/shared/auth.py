@@ -35,6 +35,9 @@ def create_access_token(
     provider=None,
     display_name=None,
     roles=None,
+    organization_ids=None,
+    region_ids=None,
+    authz_version=1,
     now=None,
     ttl_seconds=None,
     jwt_id=None,
@@ -47,6 +50,12 @@ def create_access_token(
     claims = {
         "sub": user_id,
         "roles": list(DEFAULT_ROLES) if roles is None else list(roles),
+        # Admin RBAC scopes are embedded in the access token so API routes can
+        # authorize without a DB round-trip. authz_version allows invalidating
+        # stale tokens when a user's roles/scopes change.
+        "organization_ids": _string_list(organization_ids),
+        "region_ids": _string_list(region_ids),
+        "authz_version": int(authz_version or 1),
         "iat": issued_at,
         "exp": issued_at + ttl,
         "iss": _issuer(),
@@ -125,6 +134,14 @@ def _validate_claims(claims, now):
     roles = claims.get("roles", [])
     if roles is not None and not isinstance(roles, list):
         raise AuthTokenError("INVALID_TOKEN_CLAIMS", "Invalid token claims")
+    for claim in ("organization_ids", "region_ids"):
+        values = claims.get(claim, [])
+        if values is not None and not isinstance(values, list):
+            raise AuthTokenError("INVALID_TOKEN_CLAIMS", "Invalid token claims")
+    try:
+        int(claims.get("authz_version", 1))
+    except (TypeError, ValueError):
+        raise AuthTokenError("INVALID_TOKEN_CLAIMS", "Invalid token claims")
 
 
 def _decode_json_part(encoded):
@@ -138,6 +155,12 @@ def _decode_json_part(encoded):
 
 def _json_bytes(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def _string_list(values):
+    if values is None:
+        return []
+    return [str(value) for value in values if value not in (None, "")]
 
 
 def _sign(signing_input):

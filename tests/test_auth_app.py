@@ -138,6 +138,9 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(claims["sid"], body["session"]["sessionId"])
             self.assertEqual(claims["provider"], "google")
             self.assertEqual(claims["roles"], ["R-USER"])
+            self.assertEqual(claims["organization_ids"], [])
+            self.assertEqual(claims["region_ids"], [])
+            self.assertEqual(claims["authz_version"], 1)
             self.assertNotIn("valid-google-token", response["body"])
 
     def test_refresh_cookie_attributes_are_environment_configurable_for_cross_site_frontend(self):
@@ -262,6 +265,8 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(token_claims["sub"], body["user"]["userId"])
             self.assertEqual(token_claims["provider"], "cognito")
             self.assertEqual(token_claims["roles"], ["R-USER"])
+            self.assertEqual(token_claims["organization_ids"], [])
+            self.assertEqual(token_claims["region_ids"], [])
 
     def test_cognito_session_reuses_cognito_subject_and_returns_preferences_alias(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
@@ -384,6 +389,44 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(response["statusCode"], 200)
             self.assertEqual(body["user"]["roles"], ["R-ADMIN"])
 
+    def test_me_returns_db_role_and_region_assignments(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            self.user_repository.role_assignments.append(
+                {
+                    "userId": user_id,
+                    "roleCode": "R-DATA-PROVIDER",
+                    "organizationId": "org-gangneung",
+                    "status": "active",
+                }
+            )
+            self.user_repository.region_assignments.append(
+                {
+                    "userId": user_id,
+                    "regionId": "KR-42-150",
+                    "organizationId": "org-gangneung",
+                    "status": "active",
+                }
+            )
+
+            response = self.request(
+                make_event(
+                    "GET",
+                    "/api/v1/auth/me",
+                    authorizer_context={"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], ["R-USER", "R-DATA-PROVIDER"])
+            self.assertEqual(body["user"]["organizationIds"], ["org-gangneung"])
+            self.assertEqual(body["user"]["regionIds"], ["KR-42-150"])
+            self.assertEqual(body["user"]["authzVersion"], 1)
+
     def test_session_cookie_derives_admin_role_from_existing_user_record(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
             login = self.request(
@@ -399,6 +442,84 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(response["statusCode"], 200)
             self.assertEqual(body["user"]["roles"], ["R-ADMIN"])
             self.assertEqual(verify_access_token(body["accessToken"])["roles"], ["R-ADMIN"])
+
+    def test_session_cookie_issues_token_with_db_authorization_assignments(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            cookie = login["headers"]["Set-Cookie"].split(";", 1)[0]
+            self.user_repository.role_assignments.append(
+                {
+                    "userId": user_id,
+                    "roleCode": "R-LOCAL-OPERATOR",
+                    "organizationId": "org-gangneung",
+                    "status": "active",
+                }
+            )
+            self.user_repository.region_assignments.append(
+                {
+                    "userId": user_id,
+                    "regionId": "KR-42-150",
+                    "organizationId": "org-gangneung",
+                    "status": "active",
+                }
+            )
+
+            response = self.request(make_event("GET", "/api/v1/auth/session", cookies=[cookie]))
+            body = json.loads(response["body"])
+            claims = verify_access_token(body["accessToken"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], ["R-USER", "R-LOCAL-OPERATOR"])
+            self.assertEqual(body["user"]["organizationIds"], ["org-gangneung"])
+            self.assertEqual(body["user"]["regionIds"], ["KR-42-150"])
+            self.assertEqual(claims["roles"], ["R-USER", "R-LOCAL-OPERATOR"])
+            self.assertEqual(claims["organization_ids"], ["org-gangneung"])
+            self.assertEqual(claims["region_ids"], ["KR-42-150"])
+            self.assertEqual(claims["authz_version"], 1)
+
+    def test_revoked_or_expired_assignments_are_not_issued(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            cookie = login["headers"]["Set-Cookie"].split(";", 1)[0]
+            self.user_repository.role_assignments.extend(
+                [
+                    {"userId": user_id, "roleCode": "R-DATA-PROVIDER", "organizationId": "org-revoked", "status": "revoked"},
+                    {
+                        "userId": user_id,
+                        "roleCode": "R-LOCAL-OPERATOR",
+                        "organizationId": "org-expired",
+                        "status": "active",
+                        "validUntil": "2026-06-10T09:00:00Z",
+                    },
+                ]
+            )
+            self.user_repository.region_assignments.append(
+                {
+                    "userId": user_id,
+                    "regionId": "KR-42-150",
+                    "organizationId": "org-future",
+                    "status": "active",
+                    "validFrom": "2026-06-10T09:00:01Z",
+                }
+            )
+
+            response = self.request(make_event("GET", "/api/v1/auth/session", cookies=[cookie]))
+            body = json.loads(response["body"])
+            claims = verify_access_token(body["accessToken"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], ["R-USER"])
+            self.assertEqual(body["user"]["organizationIds"], [])
+            self.assertEqual(body["user"]["regionIds"], [])
+            self.assertEqual(claims["roles"], ["R-USER"])
+            self.assertEqual(claims["organization_ids"], [])
+            self.assertEqual(claims["region_ids"], [])
 
     def test_session_cookie_fails_closed_for_system_role(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):

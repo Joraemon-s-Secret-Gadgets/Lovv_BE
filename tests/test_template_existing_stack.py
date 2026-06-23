@@ -34,6 +34,8 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             "RDS_SECRET_ARN: !Ref RdsSecretArn",
             "RDS_DATABASE_NAME: !Ref RdsDatabaseName",
             "AUTH_SESSIONS_TABLE_NAME: !Ref AuthSessionsTableName",
+            "USER_ROLE_ASSIGNMENTS_TABLE_NAME: !Ref UserRoleAssignmentsTableName",
+            "USER_REGION_ASSIGNMENTS_TABLE_NAME: !Ref UserRegionAssignmentsTableName",
             "VpcConfig:",
         ):
             self.assertIn(expected, self.template)
@@ -65,6 +67,36 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             path_index = preferences_block.index(path)
             self.assertIn("Authorizer: LovvTokenAuthorizer", preferences_block[path_index : path_index + 220])
 
+    def test_admin_routes_use_lovv_token_authorizer(self):
+        admin_index = self.template.index("AdminFunction:")
+        admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
+        self.assertEqual(admin_block.count("Authorizer: LovvTokenAuthorizer"), 9)
+        for path in (
+            "Path: /api/v1/admin/users",
+            "Path: /api/v1/admin/users/{userId}",
+            "Path: /api/v1/admin/data-proposals",
+            "Path: /api/v1/admin/data-proposals/{proposalId}",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/review",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/approve",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/reject",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/history",
+        ):
+            path_index = admin_block.index(path)
+            self.assertIn("Authorizer: LovvTokenAuthorizer", admin_block[path_index : path_index + 220])
+
+    def test_admin_function_uses_existing_data_stack_tables(self):
+        admin_index = self.template.index("AdminFunction:")
+        admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
+        for expected in (
+            "DB_ACCESS_MODE: mysql",
+            "RDS_HOST: !Ref RdsHost",
+            "RDS_SECRET_ARN: !Ref RdsSecretArn",
+            "RDS_DATABASE_NAME: !Ref RdsDatabaseName",
+            "ADMIN_DATA_PROPOSALS_TABLE_NAME: !Ref AdminDataProposalsTableName",
+            "ADMIN_DATA_PROPOSAL_HISTORY_TABLE_NAME: !Ref AdminDataProposalHistoryTableName",
+        ):
+            self.assertIn(expected, admin_block)
+
     def test_lovv_token_authorizer_allows_http_api_invoke(self):
         self.assertIn("AuthAuthorizerInvokePermission:", self.template)
         self.assertIn("Type: AWS::Lambda::Permission", self.template)
@@ -76,6 +108,7 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
         self.assertIn("Default: http://localhost:5173,http://127.0.0.1:5173", self.template)
         self.assertIn("https://d3nuef0zacpyj.cloudfront.net", self.template)
+        self.assertIn("https://lovv-admin-web.vercel.app", self.template)
 
     def test_auth_function_exposes_cognito_bridge_route_without_cognito_infra_cutover(self):
         self.assertIn("AuthCognitoSession:", self.template)
