@@ -15,11 +15,9 @@ Parameters:
     Type: String
     Default: raw/KR/details/20260609/
     Description: S3 prefix for city-by-city raw detail JSON files.
-  AuthTokenSigningSecret:
+  AuthTokenSigningSecretArn:
     Type: String
-    NoEcho: true
-    MinLength: 32
-    Description: Signing secret for service JWT access tokens. Provide through deploy parameters or local env.
+    Description: Secrets Manager ARN for JWT signing secret.
   AuthTokenTtlSeconds:
     Type: String
     Default: '900'
@@ -42,7 +40,7 @@ Parameters:
     Description: HttpOnly Secure refresh-session cookie name.
   AuthRefreshCookieSameSite:
     Type: String
-    Default: Lax
+    Default: None
     AllowedValues:
       - Strict
       - Lax
@@ -222,6 +220,7 @@ Resources:
           - GET
           - POST
           - PUT
+          - PATCH
           - DELETE
           - OPTIONS
         AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]
@@ -363,7 +362,7 @@ Resources:
       Description: Product social auth API for Google/Kakao login, service sessions, current user, and logout.
       Environment:
         Variables:
-          AUTH_TOKEN_SIGNING_SECRET: !Ref AuthTokenSigningSecret
+          AUTH_TOKEN_SIGNING_SECRET_ARN: !Ref AuthTokenSigningSecretArn
           AUTH_TOKEN_TTL_SECONDS: !Ref AuthTokenTtlSeconds
           AUTH_REFRESH_TTL_SECONDS: !Ref AuthRefreshTtlSeconds
           AUTH_REFRESH_COOKIE_NAME: !Ref AuthRefreshCookieName
@@ -389,7 +388,6 @@ Resources:
           - !Ref AppFunctionSecurityGroup
         SubnetIds:
           - !Ref PrivateSubnetA
-          - !Ref PrivateSubnetC
       Policies:
         - AWSLambdaVPCAccessExecutionRole
         - Statement:
@@ -404,7 +402,9 @@ Resources:
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
-              Resource: !Ref RdsSecretArn
+              Resource:
+                - !Ref RdsSecretArn
+                - !Ref AuthTokenSigningSecretArn
       Events:
         AuthGoogle:
           Type: HttpApi
@@ -432,6 +432,38 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: GET
             Path: /api/v1/auth/me
+        AuthUpdateMe:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: PATCH
+            Path: /api/v1/auth/me
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AuthListSocialAccounts:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/auth/social-accounts
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AuthLinkGoogle:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/auth/link/google
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AuthLinkKakao:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/auth/link/kakao
+            Auth:
+              Authorizer: LovvTokenAuthorizer
         AuthSession:
           Type: HttpApi
           Properties:
@@ -452,9 +484,15 @@ Resources:
       Description: HTTP API Lambda authorizer for Lovv service access JWTs.
       Environment:
         Variables:
-          AUTH_TOKEN_SIGNING_SECRET: !Ref AuthTokenSigningSecret
+          AUTH_TOKEN_SIGNING_SECRET_ARN: !Ref AuthTokenSigningSecretArn
           AUTH_ISSUER: !Ref AuthIssuer
           AUTH_AUDIENCE: !Ref AuthAudience
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref AuthTokenSigningSecretArn
 
   AuthAuthorizerInvokePermission:
     Type: AWS::Lambda::Permission
@@ -481,7 +519,6 @@ Resources:
           - !Ref AppFunctionSecurityGroup
         SubnetIds:
           - !Ref PrivateSubnetA
-          - !Ref PrivateSubnetC
       Policies:
         - AWSLambdaVPCAccessExecutionRole
         - Statement:
@@ -511,7 +548,21 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: agentcore.app.lambda_handler
-      Description: Mock recommendation API for frontend integration. Bedrock AgentCore integration is deferred.
+      Timeout: 120
+      Description: AgentCore recommendation API - invokes Bedrock AgentCore runtime.
+      Environment:
+        Variables:
+          BEDROCK_AGENT_ARN: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM"
+          CORS_ALLOW_ORIGIN: !Select [0, !Split [",", !Ref AllowedCorsOrigin]]
+          CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "bedrock-agentcore:InvokeAgentRuntime"
+              Resource: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM*"
+      FunctionUrlConfig:
+        AuthType: NONE
       Events:
         CreateRecommendation:
           Type: HttpApi
@@ -539,7 +590,6 @@ Resources:
           - !Ref AppFunctionSecurityGroup
         SubnetIds:
           - !Ref PrivateSubnetA
-          - !Ref PrivateSubnetC
       Policies:
         - AWSLambdaVPCAccessExecutionRole
         - Statement:

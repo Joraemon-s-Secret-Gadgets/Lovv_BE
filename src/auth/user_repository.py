@@ -58,7 +58,7 @@ class RdsDataUserRepository:
     def get_user(self, user_id):
         row = self.rds.fetch_one(
             f"""
-            SELECT id, email, display_name, avatar_url, status
+            SELECT id, email, display_name, avatar_url, birth_date, gender, created_at, status, role
             FROM {self.users_table}
             WHERE id = :user_id AND status = 'active'
             """,
@@ -69,7 +69,7 @@ class RdsDataUserRepository:
     def _find_by_social(self, provider, provider_user_id):
         row = self.rds.fetch_one(
             f"""
-            SELECT u.id, u.email, u.display_name, u.avatar_url, u.status
+            SELECT u.id, u.email, u.display_name, u.avatar_url, u.birth_date, u.gender, u.created_at, u.status, u.role
             FROM {self.social_accounts_table} sa
             JOIN {self.users_table} u ON u.id = sa.user_id
             WHERE sa.provider = :provider
@@ -83,7 +83,7 @@ class RdsDataUserRepository:
     def _find_by_verified_email(self, email):
         row = self.rds.fetch_one(
             f"""
-            SELECT id, email, display_name, avatar_url, status
+            SELECT id, email, display_name, avatar_url, birth_date, gender, created_at, status, role
             FROM {self.users_table}
             WHERE email = :email AND status = 'active'
             """,
@@ -116,6 +116,10 @@ class RdsDataUserRepository:
             "email": identity.email if identity.email_verified else None,
             "displayName": display_name,
             "avatarUrl": identity.avatar_url,
+            "birthDate": None,
+            "gender": None,
+            "createdAt": now,
+            "role": "user",
             "roles": ["R-USER"],
             "status": "active",
         }
@@ -176,6 +180,63 @@ class RdsDataUserRepository:
             include_result_metadata=False,
         )
 
+    def update_profile(self, user_id, now, fields):
+        fields = {key: value for key, value in (fields or {}).items() if key in _PROFILE_UPDATE_COLUMNS}
+        if fields:
+            assignments = [f"{column} = :{column}" for column in fields]
+            assignments.append("updated_at = :now")
+            params = dict(fields)
+            params["user_id"] = user_id
+            params["now"] = now
+            self.rds.execute(
+                f"""
+                UPDATE {self.users_table}
+                SET {", ".join(assignments)}
+                WHERE id = :user_id AND status = 'active'
+                """,
+                params,
+                include_result_metadata=False,
+            )
+
+        user = self.get_user(user_id)
+        if not user:
+            raise UserRepositoryError("USER_NOT_FOUND", "User was not found", 404)
+        return user
+
+    def link_provider_to_user(self, user_id, identity, now):
+        existing = self._find_by_social(identity.provider, identity.provider_user_id)
+        if existing:
+            if existing["userId"] == user_id:
+                raise UserRepositoryError(
+                    "SOCIAL_ACCOUNT_ALREADY_LINKED",
+                    "This provider account is already linked to your profile.",
+                    409,
+                )
+            raise UserRepositoryError(
+                "SOCIAL_ACCOUNT_LINKED_TO_ANOTHER_USER",
+                "This provider account is already linked to a different account.",
+                409,
+            )
+
+        self._create_social_account(user_id, identity, now)
+        return self.list_social_accounts(user_id)
+
+    def list_social_accounts(self, user_id):
+        rows = self.rds.fetch_all(
+            f"""
+            SELECT provider, provider_user_id, provider_nickname, provider_profile_image_url,
+                   created_at, last_login_at
+            FROM {self.social_accounts_table}
+            WHERE user_id = :user_id
+            ORDER BY created_at ASC
+            """,
+            {"user_id": user_id},
+        )
+        return [_social_account_from_row(row) for row in (rows or [])]
+
+
+_PROFILE_UPDATE_COLUMNS = {"display_name", "birth_date", "gender"}
+
 
 class InMemoryUserRepository:
     def __init__(self, now="2026-06-10T09:00:00Z"):
@@ -206,6 +267,9 @@ class InMemoryUserRepository:
                 "email": identity.email if identity.email_verified else None,
                 "displayName": identity.display_name or "Lovv User",
                 "avatarUrl": identity.avatar_url,
+                "birthDate": None,
+                "gender": None,
+                "role": "user",
                 "roles": ["R-USER"],
                 "status": "active",
                 "createdAt": now or self.now,
@@ -222,6 +286,10 @@ class InMemoryUserRepository:
             "providerUserId": identity.provider_user_id,
             "email": identity.email,
             "emailVerified": identity.email_verified,
+            "nickname": identity.display_name,
+            "avatarUrl": identity.avatar_url,
+            "linkedAt": now or self.now,
+            "lastLoginAt": now or self.now,
         }
         return UserLoginResult(user=dict(user), is_new_user=is_new)
 
@@ -229,7 +297,76 @@ class InMemoryUserRepository:
         user = self.users.get(user_id)
         if not user or user.get("status") != "active":
             return None
-        return dict(user)
+        result = dict(user)
+        result["roles"] = roles_for_db_role(result.get("role"))
+        return result
+
+    def update_profile(self, user_id, now, fields):
+        user = self.users.get(user_id)
+        if not user or user.get("status") != "active":
+            raise UserRepositoryError("USER_NOT_FOUND", "User was not found", 404)
+
+        fields = fields or {}
+        if "display_name" in fields:
+            user["displayName"] = fields["display_name"]
+        if "birth_date" in fields:
+            user["birthDate"] = fields["birth_date"]
+        if "gender" in fields:
+            user["gender"] = fields["gender"]
+        user["updatedAt"] = now or self.now
+        return self.get_user(user_id)
+
+    def link_provider_to_user(self, user_id, identity, now=None):
+        key = (identity.provider, identity.provider_user_id)
+        existing = self.social_accounts.get(key)
+        if existing:
+            if existing["userId"] == user_id:
+                raise UserRepositoryError(
+                    "SOCIAL_ACCOUNT_ALREADY_LINKED",
+                    "This provider account is already linked to your profile.",
+                    409,
+                )
+            raise UserRepositoryError(
+                "SOCIAL_ACCOUNT_LINKED_TO_ANOTHER_USER",
+                "This provider account is already linked to a different account.",
+                409,
+            )
+
+        self.social_accounts[key] = {
+            "userId": user_id,
+            "provider": identity.provider,
+            "providerUserId": identity.provider_user_id,
+            "email": identity.email,
+            "emailVerified": identity.email_verified,
+            "nickname": identity.display_name,
+            "avatarUrl": identity.avatar_url,
+            "linkedAt": now or self.now,
+            "lastLoginAt": now or self.now,
+        }
+        return self.list_social_accounts(user_id)
+
+    def list_social_accounts(self, user_id):
+        return [
+            {
+                "provider": account["provider"],
+                "providerUserId": account["providerUserId"],
+                "nickname": account.get("nickname"),
+                "avatarUrl": account.get("avatarUrl"),
+                "linkedAt": account.get("linkedAt"),
+                "lastLoginAt": account.get("lastLoginAt"),
+            }
+            for account in self.social_accounts.values()
+            if account["userId"] == user_id
+        ]
+
+
+def roles_for_db_role(role):
+    normalized = (role or "user").strip().lower() if isinstance(role, str) else "user"
+    if normalized == "admin":
+        return ["R-ADMIN"]
+    if normalized == "user":
+        return ["R-USER"]
+    return []
 
 
 def _user_from_row(row):
@@ -238,8 +375,23 @@ def _user_from_row(row):
         "email": row.get("email"),
         "displayName": row.get("display_name") or "Lovv User",
         "avatarUrl": row.get("avatar_url"),
-        "roles": ["R-USER"],
+        "birthDate": row.get("birth_date"),
+        "gender": row.get("gender"),
+        "createdAt": row.get("created_at"),
+        "role": row.get("role") or "user",
+        "roles": roles_for_db_role(row.get("role")),
         "status": row.get("status") or "active",
+    }
+
+
+def _social_account_from_row(row):
+    return {
+        "provider": row.get("provider"),
+        "providerUserId": row.get("provider_user_id"),
+        "nickname": row.get("provider_nickname"),
+        "avatarUrl": row.get("provider_profile_image_url"),
+        "linkedAt": row.get("created_at"),
+        "lastLoginAt": row.get("last_login_at"),
     }
 
 

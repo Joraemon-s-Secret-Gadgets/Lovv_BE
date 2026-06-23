@@ -46,7 +46,7 @@ def create_access_token(
     ttl = int(ttl_seconds if ttl_seconds is not None else _token_ttl_seconds())
     claims = {
         "sub": user_id,
-        "roles": roles or list(DEFAULT_ROLES),
+        "roles": list(DEFAULT_ROLES) if roles is None else list(roles),
         "iat": issued_at,
         "exp": issued_at + ttl,
         "iss": _issuer(),
@@ -163,7 +163,29 @@ def _header_value(headers, name):
     return None
 
 
+_signing_secret_cache = None
+
+
 def _signing_secret():
+    global _signing_secret_cache
+    if _signing_secret_cache is not None:
+        return _signing_secret_cache
+
+    secret_arn = os.environ.get("AUTH_TOKEN_SIGNING_SECRET_ARN")
+    if secret_arn:
+        try:
+            import boto3
+            client = boto3.client("secretsmanager")
+            response = client.get_secret_value(SecretId=secret_arn)
+            _signing_secret_cache = response["SecretString"]
+            return _signing_secret_cache
+        except Exception as error:
+            raise AuthTokenError(
+                "AUTH_NOT_CONFIGURED",
+                f"Failed to retrieve signing secret from Secrets Manager: {error}",
+                500
+            )
+
     value = os.environ.get("AUTH_TOKEN_SIGNING_SECRET")
     if value is None or value == "":
         raise AuthTokenError("AUTH_NOT_CONFIGURED", "Authentication is not configured", 500)

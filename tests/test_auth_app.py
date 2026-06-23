@@ -364,6 +364,58 @@ class AuthAppTest(unittest.TestCase):
             self.assertFalse(body["onboardingCompleted"])
             self.assertIsNone(body["preferences"])
 
+    def test_me_derives_admin_role_from_existing_user_record(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            self.user_repository.users[user_id]["role"] = "admin"
+
+            response = self.request(
+                make_event(
+                    "GET",
+                    "/api/v1/auth/me",
+                    authorizer_context={"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], ["R-ADMIN"])
+
+    def test_session_cookie_derives_admin_role_from_existing_user_record(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            cookie = login["headers"]["Set-Cookie"].split(";", 1)[0]
+            self.user_repository.users[user_id]["role"] = "admin"
+
+            response = self.request(make_event("GET", "/api/v1/auth/session", cookies=[cookie]))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], ["R-ADMIN"])
+            self.assertEqual(verify_access_token(body["accessToken"])["roles"], ["R-ADMIN"])
+
+    def test_session_cookie_fails_closed_for_system_role(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            cookie = login["headers"]["Set-Cookie"].split(";", 1)[0]
+            self.user_repository.users[user_id]["role"] = "system"
+
+            response = self.request(make_event("GET", "/api/v1/auth/session", cookies=[cookie]))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["roles"], [])
+            self.assertEqual(verify_access_token(body["accessToken"])["roles"], [])
+
     def test_me_returns_saved_preferences_with_selected_theme_ids_alias(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
             login = self.request(
@@ -532,6 +584,185 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(response["statusCode"], 204)
             self.assertEqual(response["body"], "")
             self.assertIn("Max-Age=0", response["headers"]["Set-Cookie"])
+
+    def test_update_me_changes_display_name_and_birth_date(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+
+            response = self.request(
+                make_event(
+                    "PATCH",
+                    "/api/v1/auth/me",
+                    {"displayName": "New Name", "birthDate": "1995-05-20"},
+                    authorizer_context={"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertEqual(body["user"]["displayName"], "New Name")
+            self.assertEqual(body["user"]["name"], "New Name")
+            self.assertEqual(body["user"]["birthDate"], "1995-05-20")
+
+    def test_update_me_can_clear_birth_date(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            auth_ctx = {"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"}
+
+            self.request(make_event("PATCH", "/api/v1/auth/me", {"birthDate": "1995-05-20"}, authorizer_context=auth_ctx))
+            response = self.request(make_event("PATCH", "/api/v1/auth/me", {"birthDate": None}, authorizer_context=auth_ctx))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            self.assertIsNone(body["user"]["birthDate"])
+
+    def test_update_me_rejects_future_birth_date(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+
+            response = self.request(
+                make_event(
+                    "PATCH",
+                    "/api/v1/auth/me",
+                    {"birthDate": "2099-01-01"},
+                    authorizer_context={"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 400)
+            self.assertEqual(body["error"]["code"], "INVALID_BIRTH_DATE")
+
+    def test_update_me_rejects_empty_request(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+
+            response = self.request(
+                make_event(
+                    "PATCH",
+                    "/api/v1/auth/me",
+                    {},
+                    authorizer_context={"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 400)
+            self.assertEqual(body["error"]["code"], "INVALID_REQUEST")
+
+    def test_update_me_rejects_missing_bearer_before_initializing_database_repositories(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            response = handle_request(make_event("PATCH", "/api/v1/auth/me", {"displayName": "New Name"}))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 401)
+            self.assertEqual(body["error"]["code"], "UNAUTHORIZED")
+
+    def test_link_kakao_attaches_new_provider_to_existing_google_user(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            auth_ctx = {"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"}
+
+            response = self.request(
+                make_event(
+                    "POST",
+                    "/api/v1/auth/link/kakao",
+                    {"credentialType": "id_token", "credential": "valid-kakao-token"},
+                    authorizer_context=auth_ctx,
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            providers = {account["provider"] for account in body["socialAccounts"]}
+            self.assertEqual(providers, {"google", "kakao"})
+            self.assertEqual(len(self.user_repository.users), 1)
+
+    def test_link_provider_already_linked_to_same_user_returns_conflict(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            auth_ctx = {"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"}
+
+            response = self.request(
+                make_event(
+                    "POST",
+                    "/api/v1/auth/link/google",
+                    {"credentialType": "id_token", "credential": "valid-google-token"},
+                    authorizer_context=auth_ctx,
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 409)
+            self.assertEqual(body["error"]["code"], "SOCIAL_ACCOUNT_ALREADY_LINKED")
+
+    def test_link_provider_already_linked_to_another_user_returns_conflict(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            first_login = self.request(
+                make_event("POST", "/api/v1/auth/kakao", {"credentialType": "id_token", "credential": "valid-kakao-token"})
+            )
+            first_user_id = json.loads(first_login["body"])["user"]["userId"]
+
+            second_login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            second_user_id = json.loads(second_login["body"])["user"]["userId"]
+            self.assertNotEqual(first_user_id, second_user_id)
+
+            response = self.request(
+                make_event(
+                    "POST",
+                    "/api/v1/auth/link/kakao",
+                    {"credentialType": "id_token", "credential": "valid-kakao-token"},
+                    authorizer_context={"userId": second_user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 409)
+            self.assertEqual(body["error"]["code"], "SOCIAL_ACCOUNT_LINKED_TO_ANOTHER_USER")
+            self.assertEqual(len(self.user_repository.users), 2)
+
+    def test_list_social_accounts_returns_linked_providers(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            login = self.request(
+                make_event("POST", "/api/v1/auth/google", {"credentialType": "id_token", "credential": "valid-google-token"})
+            )
+            user_id = json.loads(login["body"])["user"]["userId"]
+            auth_ctx = {"userId": user_id, "sessionId": "session-1", "roles": "R-USER", "provider": "google"}
+            self.request(
+                make_event(
+                    "POST",
+                    "/api/v1/auth/link/kakao",
+                    {"credentialType": "id_token", "credential": "valid-kakao-token"},
+                    authorizer_context=auth_ctx,
+                )
+            )
+
+            response = self.request(make_event("GET", "/api/v1/auth/social-accounts", authorizer_context=auth_ctx))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 200)
+            providers = {account["provider"] for account in body["socialAccounts"]}
+            self.assertEqual(providers, {"google", "kakao"})
 
     def test_access_token_remains_stateless_until_expiration_after_logout(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):

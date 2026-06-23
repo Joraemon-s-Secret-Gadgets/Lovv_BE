@@ -31,12 +31,12 @@ class RdsDataSavedPlanRepository:
             existing = self._find_by_idempotency_key(user_id, idempotency_key)
             if existing:
                 if existing.get("snapshotHash") != snapshot_hash:
-                    raise IdempotencyConflictError()
+                    return self._restore(existing["itineraryId"], user_id, payload, snapshot_hash, now), True
                 return existing, True
             deleted = self._find_deleted_by_idempotency_key(user_id, idempotency_key)
             if deleted:
-                if deleted.get("snapshotHash") != snapshot_hash:
-                    raise IdempotencyConflictError()
+                # Restore regardless of hash mismatch — user deleted then re-saved the same plan
+                # (hash can differ due to dynamic fields like preferenceSnapshot.updatedAt)
                 return self._restore(deleted["itineraryId"], user_id, payload, snapshot_hash, now), False
 
         existing = self._find_by_recommendation_hash(user_id, payload.get("sourceRecommendationId"), snapshot_hash)
@@ -326,12 +326,13 @@ class InMemorySavedPlanRepository:
             for plan in self.plans.values():
                 if plan["userId"] == user_id and not plan.get("deletedAt") and plan.get("idempotencyKey") == idempotency_key:
                     if plan["snapshotHash"] != snapshot_hash:
-                        raise IdempotencyConflictError()
+                        restored = _build_plan(plan["itineraryId"], user_id, payload, snapshot_hash, now)
+                        self.plans[plan["itineraryId"]] = restored
+                        return dict(restored), True
                     return dict(plan), True
             for plan in self.plans.values():
                 if plan["userId"] == user_id and plan.get("deletedAt") and plan.get("idempotencyKey") == idempotency_key:
-                    if plan["snapshotHash"] != snapshot_hash:
-                        raise IdempotencyConflictError()
+                    # Restore regardless of hash mismatch (same fix as RDS path)
                     restored = _build_plan(plan["itineraryId"], user_id, payload, snapshot_hash, now)
                     self.plans[plan["itineraryId"]] = restored
                     return dict(restored), False

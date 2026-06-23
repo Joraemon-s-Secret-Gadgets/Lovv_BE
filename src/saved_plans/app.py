@@ -14,7 +14,10 @@ from saved_plans.repository import (
 from shared.auth import AuthTokenError
 from shared.current_user import authenticated_claims
 from shared.http import empty_response, error_response, json_response
+from shared.logger import Tag, get_logger
 
+
+LOGGER = get_logger(__name__)
 
 RAW_HISTORY_FIELDS = {"messages", "chatHistory", "conversation", "transcript"}
 FORBIDDEN_OWNER_FIELDS = {"userId", "user_id", "ownerId", "createdBy"}
@@ -40,6 +43,7 @@ def handle_request(event, repository=None):
     except AuthTokenError as error:
         return error_response(error.status_code, error.code, error.message)
     except Exception:
+        LOGGER.exception(Tag.SYSTEM, "Unhandled saved plans API error")
         return error_response(500, "INTERNAL_ERROR", "Saved plans API is unavailable")
 
 
@@ -77,6 +81,13 @@ def _save_plan(event, user_id, repository):
     except IdempotencyConflictError:
         raise SavedPlanRequestError(409, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency key conflicts with another payload")
 
+    LOGGER.info(
+        Tag.PLAN,
+        "Itinerary saved (userId=%s, itineraryId=%s, duplicate=%s)",
+        user_id,
+        plan["itineraryId"],
+        bool(duplicate),
+    )
     return json_response(
         200 if duplicate else 201,
         {
@@ -106,6 +117,7 @@ def _delete_plan(user_id, itinerary_id, repository):
         raise SavedPlanRequestError(404, "ITINERARY_NOT_FOUND", "Saved itinerary was not found")
     if result == "forbidden":
         raise SavedPlanRequestError(403, "FORBIDDEN", "You cannot delete another user's saved itinerary")
+    LOGGER.info(Tag.PLAN, "Itinerary deleted (userId=%s, itineraryId=%s)", user_id, itinerary_id)
     return empty_response(204)
 
 
@@ -113,6 +125,14 @@ def _set_like(user_id, itinerary_id, liked, repository):
     plan, changed = repository.set_like(user_id, itinerary_id, liked, _now_iso())
     if not plan:
         raise SavedPlanRequestError(404, "ITINERARY_NOT_FOUND", "Saved itinerary was not found")
+    LOGGER.info(
+        Tag.PLAN,
+        "Itinerary %s (userId=%s, itineraryId=%s, changed=%s)",
+        "liked" if liked else "unliked",
+        user_id,
+        itinerary_id,
+        changed,
+    )
     if not liked:
         return empty_response(204)
     return json_response(

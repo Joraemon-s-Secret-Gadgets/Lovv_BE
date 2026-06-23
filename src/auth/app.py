@@ -5,8 +5,8 @@
 import base64
 import hashlib
 import json
-import logging
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timezone
@@ -18,12 +18,48 @@ from preferences.app import public_preference
 from preferences.repository import RdsDataPreferenceRepository
 from shared.auth import AuthTokenError, create_access_token, extract_bearer_token, verify_access_token
 from shared.http import empty_response, error_response, json_response
+from shared.logger import Tag, get_logger
 
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
+
+
+# Each MySqlClient.execute() call opens a brand-new TCP connection to RDS over the VPC and closes
+# it again — there is no pooling. Running this 3-statement ALTER TABLE self-migration on every
+# single invocation cost 3 extra connection round-trips (open+query+close each, even though the
+# queries fail fast after the first successful run) on top of whatever the actual request handler
+# needed — on every login/session/profile request. That was the dominant cause of slow logins.
+# Lambda reuses warm execution environments across many invocations, so gating this on a
+# module-level flag means the cost is paid at most once per warm container instead of every request.
+_migration_attempted = False
 
 
 def lambda_handler(event, context):
+    global _migration_attempted
+    if not _migration_attempted:
+        _migration_attempted = True
+        try:
+            from shared.database import create_database_client
+            db = create_database_client()
+            try:
+                db.execute("ALTER TABLE users ADD COLUMN birth_date DATE NULL AFTER avatar_url", include_result_metadata=False)
+            except Exception:
+                pass
+            try:
+                db.execute("ALTER TABLE users ADD COLUMN gender VARCHAR(10) NULL AFTER birth_date", include_result_metadata=False)
+            except Exception:
+                pass
+            try:
+                db.execute("ALTER TABLE users ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'active' AFTER birth_date", include_result_metadata=False)
+            except Exception:
+                pass
+            try:
+                db.execute("ALTER TABLE users ADD COLUMN role VARCHAR(30) NOT NULL DEFAULT 'user' AFTER status", include_result_metadata=False)
+            except Exception:
+                pass
+        except Exception as e:
+            print("VPC Migration helper warning:", e)
+
     return handle_request(event or {})
 
 
@@ -36,6 +72,7 @@ def handle_request(event, provider_verifier=None, user_repository=None, session_
         return error_response(error.status_code, error.code, error.message)
     except Exception as error:
         LOGGER.exception(
+            Tag.SYSTEM,
             "Unhandled auth API error: %s: %s",
             error.__class__.__name__,
             _safe_error_message(error),
@@ -80,6 +117,22 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             user_repository,
             preference_repository,
         )
+    if method == "PATCH" and path == "/api/v1/auth/me":
+        return _handle_update_me(
+            event,
+            user_repository,
+            preference_repository,
+        )
+    if method == "GET" and path == "/api/v1/auth/social-accounts":
+        return _handle_list_social_accounts(event, user_repository or RdsDataUserRepository.from_env())
+    if method == "POST" and path in ("/api/v1/auth/link/google", "/api/v1/auth/link/kakao"):
+        provider = path.rsplit("/", 1)[-1]
+        return _handle_link_provider(
+            provider,
+            event,
+            provider_verifier or ProviderVerifier(),
+            user_repository or RdsDataUserRepository.from_env(),
+        )
     if method == "GET" and path == "/api/v1/auth/session":
         return _handle_session(
             event,
@@ -94,6 +147,7 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
 
 
 def _handle_social_login(provider, event, provider_verifier, user_repository, session_repository, preference_repository):
+    LOGGER.info(Tag.AUTH, "Social login initiated for %s", provider)
     body = _json_body(event)
     credential_type = body.get("credentialType")
     credential = body.get("credential") or body.get("providerToken")
@@ -110,6 +164,13 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
     )
     now_iso = _now_iso()
     user_result = user_repository.upsert_from_provider(identity, now_iso)
+    LOGGER.info(
+        Tag.DB,
+        "User profile upserted from %s provider (userId=%s, newUser=%s)",
+        provider,
+        user_result.user["userId"],
+        user_result.is_new_user,
+    )
     refresh_token = secrets.token_urlsafe(48)
     expires_at_epoch = _now_epoch() + _refresh_ttl_seconds()
     refresh_token_hash = _hash_token(refresh_token)
@@ -127,7 +188,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
         session_id=session["sessionId"],
         provider=provider,
         display_name=user_result.user.get("displayName"),
-        roles=user_result.user.get("roles") or ["R-USER"],
+        roles=user_result.user.get("roles") if "roles" in user_result.user else ["R-USER"],
     )
     preference_state = _preference_state(preference_repository, user_result.user["userId"])
 
@@ -174,9 +235,7 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
     )
     now_iso = _now_iso()
     user_result = user_repository.upsert_from_provider(identity, now_iso)
-    roles = ["R-USER"]
     user = dict(user_result.user)
-    user["roles"] = roles
     user["cognitoSub"] = str(cognito_sub)
     user["emailVerified"] = email_verified
 
@@ -197,7 +256,7 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
         session_id=session["sessionId"],
         provider="cognito",
         display_name=user.get("displayName"),
-        roles=roles,
+        roles=user.get("roles") if "roles" in user else ["R-USER"],
     )
     preference_state = _preference_state(preference_repository, user["userId"])
 
@@ -221,7 +280,7 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
     )
 
 
-def _handle_me(event, user_repository, preference_repository):
+def _require_user_id(event):
     claims = _authorizer_claims(event)
     if claims is None:
         # Verify inside Lambda so unauthorized responses still include the shared CORS headers.
@@ -229,6 +288,13 @@ def _handle_me(event, user_repository, preference_repository):
         claims = verify_access_token(token)
 
     user_id = claims.get("userId") or claims.get("sub")
+    if not user_id:
+        raise AuthRequestError(401, "UNAUTHORIZED", "Missing authenticated user")
+    return user_id, claims
+
+
+def _handle_me(event, user_repository, preference_repository):
+    user_id, claims = _require_user_id(event)
     user_repository = user_repository or RdsDataUserRepository.from_env()
     preference_repository = preference_repository or RdsDataPreferenceRepository.from_env()
     user = user_repository.get_user(user_id)
@@ -243,6 +309,105 @@ def _handle_me(event, user_repository, preference_repository):
             "onboardingCompleted": preference_state["onboardingCompleted"],
         },
     )
+
+
+def _handle_update_me(event, user_repository, preference_repository):
+    user_id, claims = _require_user_id(event)
+    user_repository = user_repository or RdsDataUserRepository.from_env()
+    preference_repository = preference_repository or RdsDataPreferenceRepository.from_env()
+
+    body = _json_body(event)
+    fields = {}
+    if "displayName" in body:
+        fields["display_name"] = _parse_display_name(body.get("displayName"))
+    if "birthDate" in body:
+        fields["birth_date"] = _parse_birth_date(body.get("birthDate"))
+    if "gender" in body:
+        fields["gender"] = _parse_gender(body.get("gender"))
+
+    if not fields:
+        raise AuthRequestError(400, "INVALID_REQUEST", "No updatable fields were provided")
+
+    now_iso = _now_iso()
+    user = user_repository.update_profile(user_id, now_iso, fields)
+    preference_state = _preference_state(preference_repository, user_id)
+    return json_response(
+        200,
+        {
+            "user": _public_user(user, provider=claims.get("provider")),
+            "preferences": preference_state["preferences"],
+            "onboardingCompleted": preference_state["onboardingCompleted"],
+        },
+    )
+
+
+def _handle_link_provider(provider, event, provider_verifier, user_repository):
+    user_id, _claims = _require_user_id(event)
+
+    body = _json_body(event)
+    credential_type = body.get("credentialType")
+    credential = body.get("credential") or body.get("providerToken")
+    if not credential_type or not credential:
+        raise AuthRequestError(400, "INVALID_REQUEST", "credentialType and credential are required")
+
+    identity = provider_verifier.verify(
+        provider,
+        credential_type,
+        credential,
+        nonce=body.get("nonce"),
+        redirect_uri=body.get("redirectUri") or body.get("redirect_uri"),
+        code_verifier=body.get("codeVerifier") or body.get("code_verifier"),
+    )
+    now_iso = _now_iso()
+    social_accounts = user_repository.link_provider_to_user(user_id, identity, now_iso)
+    return json_response(200, {"socialAccounts": [_public_social_account(account) for account in social_accounts]})
+
+
+def _handle_list_social_accounts(event, user_repository):
+    user_id, _claims = _require_user_id(event)
+    social_accounts = user_repository.list_social_accounts(user_id)
+    return json_response(200, {"socialAccounts": [_public_social_account(account) for account in social_accounts]})
+
+
+def _parse_display_name(value):
+    if not isinstance(value, str):
+        raise AuthRequestError(400, "INVALID_REQUEST", "displayName must be a string")
+    trimmed = value.strip()
+    if not trimmed:
+        raise AuthRequestError(400, "INVALID_REQUEST", "displayName must not be empty")
+    if len(trimmed) > 80:
+        raise AuthRequestError(400, "INVALID_REQUEST", "displayName must be 80 characters or fewer")
+    return trimmed
+
+
+_BIRTH_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _parse_birth_date(value):
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or not _BIRTH_DATE_PATTERN.match(value):
+        raise AuthRequestError(400, "INVALID_BIRTH_DATE", "birthDate must be an ISO date string (YYYY-MM-DD)")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        raise AuthRequestError(400, "INVALID_BIRTH_DATE", "birthDate must be a valid calendar date")
+    if parsed > datetime.now(timezone.utc).date():
+        raise AuthRequestError(400, "INVALID_BIRTH_DATE", "birthDate must not be in the future")
+    if parsed.year < 1900:
+        raise AuthRequestError(400, "INVALID_BIRTH_DATE", "birthDate year must be 1900 or later")
+    return value
+
+
+_VALID_GENDERS = {"남", "여"}
+
+
+def _parse_gender(value):
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or value not in _VALID_GENDERS:
+        raise AuthRequestError(400, "INVALID_GENDER", "gender must be '남' or '여'")
+    return value
 
 
 def _handle_session(event, user_repository, session_repository, preference_repository):
@@ -266,7 +431,7 @@ def _handle_session(event, user_repository, session_repository, preference_repos
         session_id=session["sessionId"],
         provider=session.get("provider"),
         display_name=user.get("displayName"),
-        roles=user.get("roles") or ["R-USER"],
+        roles=user.get("roles") if "roles" in user else ["R-USER"],
     )
     preference = preference_repository.get_by_user_id(user["userId"]) if preference_repository else None
     onboarding_completed = bool(preference and preference.get("onboardingCompleted"))
@@ -295,6 +460,7 @@ def _handle_logout(event, session_repository):
         session_id = _session_id_from_bearer(event)
     if session_id:
         session_repository.revoke_session(session_id, now_epoch=_now_epoch())
+        LOGGER.info(Tag.AUTH, "Session revoked on logout (sessionId=%s)", session_id)
     if not refresh_token and not session_id:
         return empty_response(204, headers={"Set-Cookie": _clear_session_cookie()})
     return json_response(200, {"success": True}, headers={"Set-Cookie": _clear_session_cookie()})
@@ -480,7 +646,10 @@ def _public_user(user, is_new_user=None, provider=None):
         "name": display_name,
         "email": user.get("email"),
         "avatarUrl": user.get("avatarUrl"),
-        "roles": user.get("roles") or ["R-USER"],
+        "birthDate": user.get("birthDate"),
+        "gender": user.get("gender"),
+        "createdAt": user.get("createdAt"),
+        "roles": user.get("roles") if "roles" in user else ["R-USER"],
     }
     if provider:
         result["provider"] = provider
@@ -491,6 +660,16 @@ def _public_user(user, is_new_user=None, provider=None):
     if is_new_user is not None:
         result["isNewUser"] = bool(is_new_user)
     return result
+
+
+def _public_social_account(account):
+    return {
+        "provider": account.get("provider"),
+        "nickname": account.get("nickname"),
+        "avatarUrl": account.get("avatarUrl"),
+        "linkedAt": account.get("linkedAt"),
+        "lastLoginAt": account.get("lastLoginAt"),
+    }
 
 
 def _preference_state(preference_repository, user_id):

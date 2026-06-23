@@ -11,6 +11,7 @@ CREATE TABLE users (
   display_name   VARCHAR(80)  NULL,
   nickname       VARCHAR(80)  NULL,
   avatar_url     VARCHAR(500) NULL,
+  birth_date     DATE         NULL,
   status         VARCHAR(30)  NOT NULL DEFAULT 'active',
   role           VARCHAR(30)  NOT NULL DEFAULT 'user',
   last_login_at  DATETIME     NULL,

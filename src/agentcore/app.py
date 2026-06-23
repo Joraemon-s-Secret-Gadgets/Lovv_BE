@@ -1,7 +1,11 @@
 import base64
 import hashlib
 import json
+import os
+import uuid
 from datetime import datetime, timezone
+
+import boto3
 
 from shared.http import error_response, json_response
 
@@ -27,21 +31,164 @@ def handle_request(event):
     try:
         return _handle_request(event or {})
     except AgentCoreRequestError as error:
-        return error_response(error.status_code, error.code, error.message)
+        return error_response(error.status_code, error.code, error.message, event=event)
     except Exception:
-        return error_response(500, "INTERNAL_ERROR", "Recommendation API is unavailable")
+        return error_response(500, "INTERNAL_ERROR", "Recommendation API is unavailable", event=event)
 
 
 def _handle_request(event):
     method = _event_method(event)
     path = _event_path(event)
     if method == "OPTIONS":
-        return json_response(200, {})
-    if method != "POST" or path != "/api/v1/recommendations":
-        return error_response(404, "NOT_FOUND", "Route not found")
+        return json_response(200, {}, event=event)
+    # Function URL invocations arrive at "/" — allow that in addition to the API Gateway path
+    if method != "POST" or path not in ("/api/v1/recommendations", "/"):
+        return error_response(404, "NOT_FOUND", "Route not found", event=event)
 
     payload = _validate_payload(_json_body(event))
-    return json_response(200, _mock_recommendation(payload))
+
+    # Support mock query param or environment variable override
+    if payload.get("mock") or os.environ.get("MOCK_RECOMMENDATION") == "true":
+        return json_response(200, _mock_recommendation(payload), event=event)
+
+    try:
+        return json_response(200, _invoke_bedrock_agent(payload), event=event)
+    except Exception as error:
+        print(f"Bedrock AgentCore invocation failed: {str(error)}. Falling back to mock recommendation.")
+        mock_res = _mock_recommendation(payload)
+        mock_res["fallback"] = True
+        mock_res["error"] = str(error)
+        return json_response(200, mock_res, event=event)
+
+
+_bedrock_client = None
+
+
+def _get_bedrock_client():
+    global _bedrock_client
+    if _bedrock_client is None:
+        _bedrock_client = boto3.client("bedrock-agentcore", region_name="us-east-1")
+    return _bedrock_client
+
+
+def _invoke_bedrock_agent(payload):
+    agent_arn = os.environ.get(
+        "BEDROCK_AGENT_ARN",
+        "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM",
+    )
+
+    session_id = payload.get("sessionId")
+    if not session_id or len(session_id) < 33:
+        session_id = f"session-{uuid.uuid4().hex}"  # 40 chars
+
+    country = payload.get("country")
+    trip_type = payload.get("tripType")
+    themes = payload.get("themes", [])
+    include_festivals = payload.get("includeFestivals", False)
+    destination_id = payload.get("destinationId", "")
+    query = payload.get("naturalLanguageQuery", "")
+
+    # Send structured payload matching AgentCore's expected input format
+    now = datetime.now(timezone.utc)
+    structured_payload = {
+        "entryType": payload.get("entryType", "chat"),
+        "destinationId": destination_id or None,
+        "country": country,
+        "travelYear": payload.get("travelYear") or now.year,
+        "travelMonth": payload.get("travelMonth") or now.month,
+        "tripType": trip_type,
+        "themes": themes,
+        "includeFestivals": include_festivals,
+        "naturalLanguageQuery": query or "",
+        "userLocation": payload.get("userLocation") or None,
+    }
+
+    wrapped_payload = {"request": structured_payload}
+    print(f"[AgentCore] sending payload: {json.dumps(wrapped_payload, ensure_ascii=False)}")
+
+    # payload must be bytes
+    bedrock_payload = json.dumps(wrapped_payload).encode("utf-8")
+
+    client = _get_bedrock_client()
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=agent_arn,
+        runtimeSessionId=session_id,
+        payload=bedrock_payload,
+    )
+
+    print(f"[AgentCore] response keys: {list(response.keys())}")
+
+    # Try common response body keys
+    raw_body = None
+    for key in ("response", "body", "completion", "outputText"):
+        if key in response:
+            candidate = response[key]
+            if hasattr(candidate, "read"):
+                raw_body = candidate.read()
+            elif isinstance(candidate, (str, bytes)):
+                raw_body = candidate if isinstance(candidate, bytes) else candidate.encode("utf-8")
+            if raw_body:
+                print(f"[AgentCore] read from key='{key}', length={len(raw_body)}")
+                break
+
+    if raw_body is None:
+        print(f"[AgentCore] no readable body found in response: {response}")
+        raise ValueError("AgentCore response has no readable body")
+
+    print(f"[AgentCore] raw response (first 500 chars): {raw_body[:500]}")
+
+    try:
+        response_data = json.loads(raw_body)
+    except json.JSONDecodeError:
+        # Response might be plain text or markdown
+        response_data = {"text": raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body}
+
+    print(f"[AgentCore] parsed response type={type(response_data).__name__}, keys={list(response_data.keys()) if isinstance(response_data, dict) else 'N/A'}")
+
+    # Unwrap "result" envelope if present
+    result = response_data.get("result", response_data) if isinstance(response_data, dict) else response_data
+
+    itinerary = result.get("itinerary") if isinstance(result, dict) else None
+    destination = result.get("destination") if isinstance(result, dict) else None
+    explainability = result.get("explainability") if isinstance(result, dict) else None
+
+    print(f"[AgentCore] itinerary={itinerary}, days_count={len(itinerary.get('days', [])) if isinstance(itinerary, dict) else 'N/A'}")
+
+    res = _mock_recommendation(payload)
+    res["mock"] = False
+    res["sessionId"] = session_id
+
+    # Override destination if AgentCore provided one
+    if destination and any(v for v in destination.values() if v is not None):
+        res["destination"] = {
+            "destinationId": destination.get("destinationId") or res["destination"]["destinationId"],
+            "cityId": destination.get("destinationId") or res["destination"]["cityId"],
+            "name": destination.get("name") or res["destination"]["name"],
+            "country": destination.get("country") or payload["country"],
+            "region": destination.get("region"),
+        }
+
+    # Override explanations if AgentCore provided them
+    if explainability:
+        res["explanations"] = {
+            "userNotice": explainability.get("userNotice") or "",
+            "confidence": explainability.get("confidence", 0),
+            "recommendationReasons": explainability.get("recommendationReasons", []),
+        }
+
+    # Override itinerary only if AgentCore returned actual days
+    if isinstance(itinerary, dict) and itinerary.get("days"):
+        res["itinerary"] = {
+            "tripType": itinerary.get("tripType", payload["tripType"]),
+            "title": res["itinerary"]["title"],
+            "summary": explainability.get("itineraryFlowReason", "") if explainability else "",
+            "durationLabel": _duration_label(itinerary.get("tripType", payload["tripType"])),
+            "days": itinerary["days"],
+        }
+        if "saveCompatibility" in res and "payload" in res["saveCompatibility"]:
+            res["saveCompatibility"]["payload"]["itinerary"] = {"days": itinerary["days"]}
+
+    return res
 
 
 def _validate_payload(body):

@@ -2,10 +2,13 @@ import json
 from decimal import Decimal
 
 from shared.http import DEFAULT_HEADERS
+from shared.logger import Tag, get_logger
 from small_cities.mapper import VALID_THEMES
 from small_cities.s3_raw_repository import CityDataInvalidError, CityDataNotFoundError, CityDataUpstreamError, S3RawCityRepository
 from small_cities.service import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, SmallCityService
 
+
+LOGGER = get_logger(__name__)
 
 VALID_COUNTRIES = {"KR", "JP"}
 
@@ -38,6 +41,7 @@ def handle_request(event, repository=None):
             return json_response(places)
 
         if city_id:
+            LOGGER.info(Tag.CITY, "Loading small city detail (cityId=%s)", city_id)
             record = service.get_city(city_id)
             if not record:
                 return error_response("NOT_FOUND", "Small city was not found.", 404)
@@ -59,10 +63,13 @@ def handle_request(event, repository=None):
     except CityDataNotFoundError as error:
         return error_response(error.code, error.message, error.status_code)
     except CityDataUpstreamError as error:
+        LOGGER.error(Tag.SYSTEM, "Upstream raw city data error: %s %s", error.code, error.message)
         return error_response(error.code, error.message, error.status_code)
     except CityDataInvalidError as error:
+        LOGGER.error(Tag.CITY, "Invalid raw city data: %s %s", error.code, error.message)
         return error_response(error.code, error.message, error.status_code)
     except Exception:
+        LOGGER.exception(Tag.SYSTEM, "Unhandled small-city API error")
         return error_response("INTERNAL_ERROR", "Small-city API is unavailable.", 500)
 
 

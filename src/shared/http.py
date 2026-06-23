@@ -11,7 +11,7 @@ DEFAULT_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:5173",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers": "Authorization,Content-Type,Cookie,X-CSRF-Token",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 }
 
 

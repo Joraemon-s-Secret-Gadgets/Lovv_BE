@@ -128,7 +128,14 @@ def _parse_secret(secret):
         raise MySqlConfigurationError("MySQL secret must be valid JSON") from error
 
 
+_secret_cache = {}
+
+
 def _load_secret(secret_arn):
+    global _secret_cache
+    if secret_arn in _secret_cache:
+        return _secret_cache[secret_arn]
+
     try:
         import boto3
     except ImportError as error:
@@ -137,7 +144,9 @@ def _load_secret(secret_arn):
     response = boto3.client("secretsmanager").get_secret_value(SecretId=secret_arn)
     if "SecretString" not in response:
         raise MySqlConfigurationError("MySQL secret must contain SecretString")
-    return response["SecretString"]
+
+    _secret_cache[secret_arn] = response["SecretString"]
+    return _secret_cache[secret_arn]
 
 
 def _pymysql_connection_factory(**kwargs):
