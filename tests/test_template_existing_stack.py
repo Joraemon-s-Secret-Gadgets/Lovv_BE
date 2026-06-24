@@ -70,7 +70,14 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
     def test_admin_routes_use_lovv_token_authorizer(self):
         admin_index = self.template.index("AdminFunction:")
         admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
-        self.assertEqual(admin_block.count("Authorizer: LovvTokenAuthorizer"), 35)
+        # Every admin HttpApi route must be guarded by the token authorizer. Assert
+        # one authorizer per route declaration instead of a hard-coded count, so the
+        # check stays correct as routes are added/removed but still fails if any
+        # route is left unguarded.
+        route_count = admin_block.count("Path: /api/v1/admin/")
+        authorizer_count = admin_block.count("Authorizer: LovvTokenAuthorizer")
+        self.assertGreater(route_count, 0)
+        self.assertEqual(authorizer_count, route_count)
         for path in (
             "Path: /api/v1/admin/users",
             "Path: /api/v1/admin/users/{userId}",
