@@ -310,6 +310,16 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         record = _merge_promotion_payload(payload, source)
         monthly_repository = monthly_repository or RdsDataMonthlyDestinationRepository.from_env()
         destination = monthly_repository.create(principal, record, _now_iso())
+        _record_audit(
+            audit_repository,
+            principal,
+            "monthly_destination.promote",
+            "monthly_destination",
+            destination.get("id"),
+            _now_iso(),
+            after={"status": destination.get("status")},
+            metadata={"sourceProposalId": destination.get("sourceProposalId")},
+        )
         return json_response(201, {"destination": _public_monthly_destination(destination)})
 
     if method == "GET" and path == MONTHLY_DESTINATION_COLLECTION_PATH:

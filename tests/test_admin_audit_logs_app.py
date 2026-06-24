@@ -76,6 +76,21 @@ class AuditLogApiTests(unittest.TestCase):
         self.assertEqual(entry["result"], "succeeded")
         self.assertEqual(entry["actorUserId"], "admin-1")
 
+    def test_promote_is_audited(self):
+        proposal_id = self._seed_approved()
+        self._call("POST", f"/api/v1/admin/data-proposals/{proposal_id}/approve", body={}, context=admin_context())
+        approved = self.proposals.get_visible(proposal_id, {"userId": "admin-1", "roles": ["R-ADMIN"]})
+        self._call("POST", MONTHLY, body={
+            "sourceProposalId": approved["proposalId"],
+            "curationMonth": "2026-10",
+            "themeCodes": ["coffee"],
+            "regionId": "KR-42-150",
+        }, context=admin_context())
+        entry = next((e for e in self.audit.entries if e["action"] == "monthly_destination.promote"), None)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["resourceType"], "monthly_destination")
+        self.assertEqual(entry["metadata"].get("sourceProposalId"), approved["proposalId"])
+
     def test_publish_is_audited_with_reflection_count(self):
         proposal_id = self._seed_approved()
         self._call("POST", f"/api/v1/admin/data-proposals/{proposal_id}/approve", body={}, context=admin_context())
