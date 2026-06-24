@@ -1,6 +1,9 @@
 # @file src/admin/repository.py
 # @description Read-only admin user repository backed by the configured SQL client.
 # @lastModified 2026-06-14
+#
+# Read-only aggregate view of users for the admin console (profile + linked
+# providers + onboarding flag + saved-itinerary count). No writes here.
 
 import os
 
@@ -39,6 +42,8 @@ class RdsDataAdminUserRepository:
         return _admin_user_from_row(row) if row else None
 
     def _base_query(self, where_clause=""):
+        # One aggregated read per user: joins social providers, onboarding flag,
+        # and active (non-deleted) saved-itinerary count for the admin user list.
         return f"""
             SELECT
               u.id,

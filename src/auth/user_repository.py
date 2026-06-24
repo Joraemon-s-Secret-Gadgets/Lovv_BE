@@ -4,6 +4,8 @@
 
 import dataclasses
 import os
+
+from auth.authz_cache_repository import DynamoDbAuthzCacheRepository
 import uuid
 
 from shared.database import create_database_client
@@ -24,14 +26,33 @@ class UserRepositoryError(Exception):
 
 
 class RdsDataUserRepository:
-    def __init__(self, rds_client=None, users_table=None, social_accounts_table=None):
+    def __init__(
+        self,
+        rds_client=None,
+        users_table=None,
+        social_accounts_table=None,
+        role_assignments_table=None,
+        region_assignments_table=None,
+        authz_cache=None,
+    ):
         self.rds = rds_client or create_database_client()
+        self.authz_cache = authz_cache
         self.users_table = users_table or os.environ.get("USERS_TABLE_NAME", "users")
         self.social_accounts_table = social_accounts_table or os.environ.get("SOCIAL_ACCOUNTS_TABLE_NAME", "social_accounts")
+        self.role_assignments_table = role_assignments_table or os.environ.get("USER_ROLE_ASSIGNMENTS_TABLE_NAME", "user_role_assignments")
+        self.region_assignments_table = region_assignments_table or os.environ.get("USER_REGION_ASSIGNMENTS_TABLE_NAME", "user_region_assignments")
 
     @classmethod
     def from_env(cls):
-        return cls()
+        # Build the authz cache best-effort: if it is not configured (or boto3 is
+        # unavailable), caching is simply disabled and every call hits MySQL.
+        authz_cache = None
+        try:
+            candidate = DynamoDbAuthzCacheRepository.from_env()
+            authz_cache = candidate if candidate.enabled else None
+        except Exception:
+            authz_cache = None
+        return cls(authz_cache=authz_cache)
 
     def upsert_from_provider(self, identity, now):
         linked = self._find_by_social(identity.provider, identity.provider_user_id)
@@ -64,7 +85,7 @@ class RdsDataUserRepository:
             """,
             {"user_id": user_id},
         )
-        return _user_from_row(row) if row else None
+        return self._with_authorization(_user_from_row(row)) if row else None
 
     def _find_by_social(self, provider, provider_user_id):
         row = self.rds.fetch_one(
@@ -89,7 +110,7 @@ class RdsDataUserRepository:
             """,
             {"email": email},
         )
-        return _user_from_row(row) if row else None
+        return self._with_authorization(_user_from_row(row)) if row else None
 
     def _create_user(self, identity, now):
         user_id = str(uuid.uuid4())
@@ -234,6 +255,76 @@ class RdsDataUserRepository:
         )
         return [_social_account_from_row(row) for row in (rows or [])]
 
+    def _with_authorization(self, user):
+        # The DB is the source of truth for admin authority: merge the legacy
+        # users.role with the active role/region assignments so the issued token
+        # reflects current grants (revoking an assignment drops it on next login).
+        # A short-TTL cache (when configured) short-circuits the SQL round-trips.
+        if not user:
+            return None
+        user_id = user["userId"]
+        if self.authz_cache is not None:
+            cached = self.authz_cache.get(user_id)
+            if cached is not None:
+                user["roles"] = list(cached["roles"])
+                user["organizationIds"] = list(cached["organizationIds"])
+                user["regionIds"] = list(cached["regionIds"])
+                user["authzVersion"] = cached["authzVersion"]
+                return user
+        role_assignments = self._active_role_assignments(user_id)
+        region_assignments = self._active_region_assignments(user_id)
+        user["roles"] = _merge_unique(
+            roles_for_db_role(user.get("role"))
+            + [row.get("role_code") for row in role_assignments]
+        )
+        user["organizationIds"] = _merge_unique(
+            [row.get("organization_id") for row in role_assignments]
+            + [row.get("organization_id") for row in region_assignments]
+        )
+        user["regionIds"] = _merge_unique([row.get("region_id") for row in region_assignments])
+        user["authzVersion"] = 1
+        if self.authz_cache is not None:
+            self.authz_cache.put(
+                user_id,
+                {
+                    "roles": user["roles"],
+                    "organizationIds": user["organizationIds"],
+                    "regionIds": user["regionIds"],
+                    "authzVersion": user["authzVersion"],
+                },
+            )
+        return user
+
+    def _active_role_assignments(self, user_id):
+        # Only assignments that are active AND within their valid_from/valid_until
+        # window count; suspended/revoked/expired grants are ignored.
+        return self.rds.fetch_all(
+            f"""
+            SELECT role_code, organization_id
+            FROM {self.role_assignments_table}
+            WHERE user_id = :user_id
+              AND status = 'active'
+              AND valid_from <= UTC_TIMESTAMP(3)
+              AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP(3))
+            ORDER BY role_code ASC, organization_id ASC
+            """,
+            {"user_id": user_id},
+        )
+
+    def _active_region_assignments(self, user_id):
+        return self.rds.fetch_all(
+            f"""
+            SELECT region_id, organization_id
+            FROM {self.region_assignments_table}
+            WHERE user_id = :user_id
+              AND status = 'active'
+              AND valid_from <= UTC_TIMESTAMP(3)
+              AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP(3))
+            ORDER BY region_id ASC, organization_id ASC
+            """,
+            {"user_id": user_id},
+        )
+
 
 _PROFILE_UPDATE_COLUMNS = {"display_name", "birth_date", "gender"}
 
@@ -243,6 +334,8 @@ class InMemoryUserRepository:
         self.now = now
         self.users = {}
         self.social_accounts = {}
+        self.role_assignments = []
+        self.region_assignments = []
 
     def upsert_from_provider(self, identity, now=None):
         key = (identity.provider, identity.provider_user_id)
@@ -250,7 +343,7 @@ class InMemoryUserRepository:
             user_id = self.social_accounts[key]["userId"]
             user = self.users[user_id]
             user["lastLoginAt"] = now or self.now
-            return UserLoginResult(user=dict(user), is_new_user=False)
+            return UserLoginResult(user=self._with_authorization(dict(user)), is_new_user=False)
 
         user = None
         if identity.email and identity.email_verified:
@@ -291,15 +384,14 @@ class InMemoryUserRepository:
             "linkedAt": now or self.now,
             "lastLoginAt": now or self.now,
         }
-        return UserLoginResult(user=dict(user), is_new_user=is_new)
+        return UserLoginResult(user=self._with_authorization(dict(user)), is_new_user=is_new)
 
     def get_user(self, user_id):
         user = self.users.get(user_id)
         if not user or user.get("status") != "active":
             return None
         result = dict(user)
-        result["roles"] = roles_for_db_role(result.get("role"))
-        return result
+        return self._with_authorization(result)
 
     def update_profile(self, user_id, now, fields):
         user = self.users.get(user_id)
@@ -359,14 +451,62 @@ class InMemoryUserRepository:
             if account["userId"] == user_id
         ]
 
+    def _with_authorization(self, user):
+        role_assignments = [assignment for assignment in self.role_assignments if _active_assignment(assignment, user["userId"], self.now)]
+        region_assignments = [assignment for assignment in self.region_assignments if _active_assignment(assignment, user["userId"], self.now)]
+        user["roles"] = _merge_unique(
+            roles_for_db_role(user.get("role"))
+            + [_assignment_value(assignment, "roleCode", "role_code") for assignment in role_assignments]
+        )
+        user["organizationIds"] = _merge_unique(
+            [_assignment_value(assignment, "organizationId", "organization_id") for assignment in role_assignments]
+            + [_assignment_value(assignment, "organizationId", "organization_id") for assignment in region_assignments]
+        )
+        user["regionIds"] = _merge_unique([_assignment_value(assignment, "regionId", "region_id") for assignment in region_assignments])
+        user["authzVersion"] = 1
+        return user
+
 
 def roles_for_db_role(role):
+    # Map the legacy single users.role column to RBAC role codes. Unknown values
+    # (e.g. "system") map to [] so they grant nothing by default (fail closed).
     normalized = (role or "user").strip().lower() if isinstance(role, str) else "user"
     if normalized == "admin":
         return ["R-ADMIN"]
     if normalized == "user":
         return ["R-USER"]
     return []
+
+
+def _merge_unique(values):
+    merged = []
+    seen = set()
+    for value in values or []:
+        if value in (None, ""):
+            continue
+        text = str(value)
+        if text not in seen:
+            merged.append(text)
+            seen.add(text)
+    return merged
+
+
+def _assignment_value(assignment, camel_key, snake_key):
+    return assignment.get(camel_key) if camel_key in assignment else assignment.get(snake_key)
+
+
+def _active_assignment(assignment, user_id, now):
+    if assignment.get("userId") not in (None, user_id) and assignment.get("user_id") not in (None, user_id):
+        return False
+    if (assignment.get("status") or "active") != "active":
+        return False
+    valid_from = assignment.get("validFrom") or assignment.get("valid_from")
+    valid_until = assignment.get("validUntil") or assignment.get("valid_until")
+    if valid_from and str(valid_from) > now:
+        return False
+    if valid_until and str(valid_until) <= now:
+        return False
+    return True
 
 
 def _user_from_row(row):

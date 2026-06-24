@@ -214,7 +214,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
         session_id=session["sessionId"],
         provider=provider,
         display_name=user_result.user.get("displayName"),
-        roles=user_result.user.get("roles") if "roles" in user_result.user else ["R-USER"],
+        **_token_authorization_kwargs(user_result.user),
     )
     preference_state = _preference_state(preference_repository, user_result.user["userId"])
 
@@ -290,7 +290,7 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
         session_id=session["sessionId"],
         provider="cognito",
         display_name=user.get("displayName"),
-        roles=user.get("roles") if "roles" in user else ["R-USER"],
+        **_token_authorization_kwargs(user),
     )
     preference_state = _preference_state(preference_repository, user["userId"])
 
@@ -470,7 +470,7 @@ def _handle_session(event, user_repository, session_repository, preference_repos
         session_id=session["sessionId"],
         provider=session.get("provider"),
         display_name=user.get("displayName"),
-        roles=user.get("roles") if "roles" in user else ["R-USER"],
+        **_token_authorization_kwargs(user),
     )
     preference = preference_repository.get_by_user_id(user["userId"]) if preference_repository else None
     onboarding_completed = bool(preference and preference.get("onboardingCompleted"))
@@ -697,6 +697,9 @@ def _public_user(user, is_new_user=None, provider=None):
         "gender": user.get("gender"),
         "createdAt": user.get("createdAt"),
         "roles": user.get("roles") if "roles" in user else ["R-USER"],
+        "organizationIds": user.get("organizationIds") or [],
+        "regionIds": user.get("regionIds") or [],
+        "authzVersion": int(user.get("authzVersion") or 1),
     }
     if provider:
         result["provider"] = provider
@@ -707,6 +710,17 @@ def _public_user(user, is_new_user=None, provider=None):
     if is_new_user is not None:
         result["isNewUser"] = bool(is_new_user)
     return result
+
+
+def _token_authorization_kwargs(user):
+    # Collect the DB-derived roles/scopes to stamp into the access token. Defaults
+    # to R-USER with empty scopes so a misconfigured record cannot gain admin rights.
+    return {
+        "roles": user.get("roles") if "roles" in user else ["R-USER"],
+        "organization_ids": user.get("organizationIds") or [],
+        "region_ids": user.get("regionIds") or [],
+        "authz_version": int(user.get("authzVersion") or 1),
+    }
 
 
 def _public_social_account(account):

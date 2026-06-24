@@ -103,6 +103,18 @@ class AdminAppTest(unittest.TestCase):
             self.assertNotIn("providerUserId", json.dumps(body))
             self.assertNotIn("token", json.dumps(body).lower())
 
+    def test_admin_role_in_role_list_can_list_users(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            response = self.request(
+                make_event(
+                    "GET",
+                    "/api/v1/admin/users",
+                    authorizer_context={"userId": "admin-1", "roles": ["R-USER", "R-ADMIN"]},
+                )
+            )
+
+            self.assertEqual(response["statusCode"], 200)
+
     def test_admin_user_can_get_user_detail(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
             response = self.request(
@@ -137,6 +149,22 @@ class AdminAppTest(unittest.TestCase):
 
             self.assertEqual(list_response["statusCode"], 403)
             self.assertEqual(detail_response["statusCode"], 403)
+            self.assertEqual(json.loads(list_response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
+            self.assertEqual(json.loads(detail_response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
+
+    def test_data_provider_cannot_access_admin_users(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            response = self.request(
+                make_event(
+                    "GET",
+                    "/api/v1/admin/users",
+                    authorizer_context={"userId": "provider-1", "roles": "R-DATA-PROVIDER"},
+                )
+            )
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 403)
+            self.assertEqual(body["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_system_role_cannot_access_admin_users(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
@@ -149,10 +177,25 @@ class AdminAppTest(unittest.TestCase):
             )
 
             self.assertEqual(response["statusCode"], 403)
+            self.assertEqual(json.loads(response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_missing_auth_returns_existing_unauthorized_shape(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
             response = self.request(make_event("GET", "/api/v1/admin/users"))
+            body = json.loads(response["body"])
+
+            self.assertEqual(response["statusCode"], 401)
+            self.assertEqual(body["error"]["code"], "UNAUTHORIZED")
+
+    def test_authorizer_context_without_user_id_returns_unauthorized(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            response = self.request(
+                make_event(
+                    "GET",
+                    "/api/v1/admin/users",
+                    authorizer_context={"roles": "R-ADMIN"},
+                )
+            )
             body = json.loads(response["body"])
 
             self.assertEqual(response["statusCode"], 401)

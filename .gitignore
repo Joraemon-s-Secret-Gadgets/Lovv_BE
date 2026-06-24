@@ -8,3 +8,6 @@ __pycache__/
 !.env.example
 .venv/
 .DS_Store
+.aws-sam-cors-build/
+.vscode/
+build.toml

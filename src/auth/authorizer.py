@@ -17,6 +17,11 @@ def lambda_handler(event, context):
             "sessionId": claims.get("sid", ""),
             "provider": claims.get("provider", ""),
             "roles": ",".join(claims.get("roles") if "roles" in claims else ["R-USER"]),
+            # API Gateway authorizer context values must be strings, so list
+            # scopes are comma-joined here and split back in shared.authorization.
+            "organization_ids": ",".join(claims.get("organization_ids") or []),
+            "region_ids": ",".join(claims.get("region_ids") or []),
+            "authz_version": claims.get("authz_version", 1),
             "displayName": claims.get("display_name", ""),
             "iss": claims["iss"],
             "aud": claims["aud"],

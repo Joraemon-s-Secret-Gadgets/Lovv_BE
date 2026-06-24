@@ -47,6 +47,24 @@ class AuthAuthorizerTest(unittest.TestCase):
             self.assertEqual(response["context"]["userId"], "user-123")
             self.assertEqual(response["context"]["provider"], "kakao")
 
+    def test_authorizer_projects_authorization_scope_claims(self):
+        with patch.dict(os.environ, AUTH_ENV, clear=True):
+            token_result = create_access_token(
+                user_id="operator-123",
+                session_id="session-456",
+                provider="cognito",
+                roles=["R-USER", "R-LOCAL-OPERATOR"],
+                organization_ids=["org-gangneung"],
+                region_ids=["KR-42-150", "KR-42-170"],
+            )
+            response = lambda_handler({"headers": {"Authorization": f"Bearer {token_result.token}"}}, None)
+
+            self.assertEqual(response["isAuthorized"], True)
+            self.assertEqual(response["context"]["roles"], "R-USER,R-LOCAL-OPERATOR")
+            self.assertEqual(response["context"]["organization_ids"], "org-gangneung")
+            self.assertEqual(response["context"]["region_ids"], "KR-42-150,KR-42-170")
+            self.assertEqual(response["context"]["authz_version"], 1)
+
     def test_authorizer_rejects_missing_token(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):
             response = lambda_handler({"headers": {}}, None)

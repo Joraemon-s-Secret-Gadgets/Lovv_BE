@@ -34,6 +34,8 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             "RDS_SECRET_ARN: !Ref RdsSecretArn",
             "RDS_DATABASE_NAME: !Ref RdsDatabaseName",
             "AUTH_SESSIONS_TABLE_NAME: !Ref AuthSessionsTableName",
+            "USER_ROLE_ASSIGNMENTS_TABLE_NAME: !Ref UserRoleAssignmentsTableName",
+            "USER_REGION_ASSIGNMENTS_TABLE_NAME: !Ref UserRegionAssignmentsTableName",
             "VpcConfig:",
         ):
             self.assertIn(expected, self.template)
@@ -65,6 +67,82 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             path_index = preferences_block.index(path)
             self.assertIn("Authorizer: LovvTokenAuthorizer", preferences_block[path_index : path_index + 220])
 
+    def test_admin_routes_use_lovv_token_authorizer(self):
+        admin_index = self.template.index("AdminFunction:")
+        admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
+        # Every admin HttpApi route must be guarded by the token authorizer. Assert
+        # one authorizer per route declaration instead of a hard-coded count, so the
+        # check stays correct as routes are added/removed but still fails if any
+        # route is left unguarded.
+        route_count = admin_block.count("Path: /api/v1/admin/")
+        authorizer_count = admin_block.count("Authorizer: LovvTokenAuthorizer")
+        self.assertGreater(route_count, 0)
+        self.assertEqual(authorizer_count, route_count)
+        for path in (
+            "Path: /api/v1/admin/users",
+            "Path: /api/v1/admin/users/{userId}",
+            "Path: /api/v1/admin/data-proposals",
+            "Path: /api/v1/admin/data-proposals/{proposalId}",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/review",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/approve",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/reject",
+            "Path: /api/v1/admin/data-proposals/{proposalId}/history",
+            "Path: /api/v1/admin/monthly-destinations",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/schedule",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/publish",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/hide",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/expire",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/reject",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/events",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/metrics",
+            "Path: /api/v1/admin/metrics/destinations",
+            "Path: /api/v1/admin/monthly-destinations/{destinationId}/publish-jobs",
+            "Path: /api/v1/admin/publish-jobs/{jobId}/start",
+            "Path: /api/v1/admin/publish-jobs/{jobId}/succeed",
+            "Path: /api/v1/admin/publish-jobs/{jobId}/fail",
+            "Path: /api/v1/admin/publish-jobs/{jobId}/retry",
+            "Path: /api/v1/admin/publish-jobs/{jobId}/cancel",
+            "Path: /api/v1/admin/notices",
+            "Path: /api/v1/admin/notices/{noticeId}/publish",
+            "Path: /api/v1/admin/notices/{noticeId}/archive",
+            "Path: /api/v1/admin/recommendation-policies",
+            "Path: /api/v1/admin/recommendation-policies/{policyId}/activate",
+            "Path: /api/v1/admin/recommendation-policies/{policyId}/archive",
+            "Path: /api/v1/admin/audit-logs",
+        ):
+            path_index = admin_block.index(path)
+            self.assertIn("Authorizer: LovvTokenAuthorizer", admin_block[path_index : path_index + 220])
+
+    def test_admin_function_uses_existing_data_stack_tables(self):
+        admin_index = self.template.index("AdminFunction:")
+        admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
+        for expected in (
+            "DB_ACCESS_MODE: mysql",
+            "RDS_HOST: !Ref RdsHost",
+            "RDS_SECRET_ARN: !Ref RdsSecretArn",
+            "RDS_DATABASE_NAME: !Ref RdsDatabaseName",
+            "ADMIN_DATA_PROPOSALS_TABLE_NAME: !Ref AdminDataProposalsTableName",
+            "ADMIN_DATA_PROPOSAL_HISTORY_TABLE_NAME: !Ref AdminDataProposalHistoryTableName",
+            "MONTHLY_CURATED_DESTINATIONS_TABLE_NAME: monthly_curated_destinations",
+            "ADMIN_PUBLISH_JOBS_TABLE_NAME: admin_publish_jobs",
+            "DESTINATION_METRICS_DAILY_TABLE_NAME: destination_metrics_daily",
+            "ADMIN_NOTICES_TABLE_NAME: admin_notices",
+            "ADMIN_RECOMMENDATION_POLICIES_TABLE_NAME: admin_recommendation_policies",
+            "ADMIN_AUDIT_LOGS_TABLE_NAME: admin_audit_logs",
+        ):
+            self.assertIn(expected, admin_block)
+
+    def test_admin_authz_cache_table_has_ttl(self):
+        self.assertIn("AdminAuthzCacheTable:", self.template)
+        self.assertIn("Type: AWS::DynamoDB::Table", self.template)
+        table_index = self.template.index("AdminAuthzCacheTable:")
+        block = self.template[table_index : table_index + 600]
+        self.assertIn("AttributeName: userId", block)
+        self.assertIn("KeyType: HASH", block)
+        self.assertIn("AttributeName: expiresAt", block)
+        self.assertIn("Enabled: true", block)
+
     def test_lovv_token_authorizer_allows_http_api_invoke(self):
         self.assertIn("AuthAuthorizerInvokePermission:", self.template)
         self.assertIn("Type: AWS::Lambda::Permission", self.template)
@@ -76,6 +154,8 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
         self.assertIn("Default: http://localhost:5173,http://127.0.0.1:5173", self.template)
         self.assertIn("https://d3nuef0zacpyj.cloudfront.net", self.template)
+        self.assertIn("https://lovv-admin-web.vercel.app", self.template)
+        self.assertIn("https://lovv-admin-web-skn26.vercel.app", self.template)
 
     def test_auth_function_exposes_cognito_bridge_route_without_cognito_infra_cutover(self):
         self.assertIn("AuthCognitoSession:", self.template)
