@@ -1120,4 +1120,6 @@ Outputs:
     Description: Cognito Hosted UI base URL.
     Value: !Sub https://${CognitoHostedUiDomainPrefix}.auth.${AWS::Region}.amazoncognito.com
   CognitoJwtIssuer:
-    Condition: Cr
+    Condition: CreateCognitoPoC
+    Description: Cognito JWT issuer for API Gateway JWT authorizer.
+    Value: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LovvCognitoUserPool}
