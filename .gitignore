@@ -7,3 +7,4 @@ __pycache__/
 .env.*
 !.env.example
 .venv/
+.aws-sam-cors-build/
