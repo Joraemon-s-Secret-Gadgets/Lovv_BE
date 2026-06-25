@@ -8,7 +8,6 @@ import os
 
 DEFAULT_HEADERS = {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "http://localhost:5173",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers": "Authorization,Content-Type,Cookie,X-CSRF-Token",
     "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -47,11 +46,13 @@ def cors_headers(event=None):
     headers = dict(DEFAULT_HEADERS)
     allowed_origins = _allowed_origins()
     origin = _header_value((event or {}).get("headers") or {}, "origin")
-    if origin in allowed_origins:
+    if not origin and allowed_origins:
+        origin = allowed_origins[0]
+    if origin and origin in allowed_origins:
         headers["Access-Control-Allow-Origin"] = origin
-    elif allowed_origins:
-        # Do not reflect untrusted origins; fall back to the first configured allowlist entry.
-        headers["Access-Control-Allow-Origin"] = allowed_origins[0]
+    else:
+        if "Access-Control-Allow-Origin" in headers:
+            del headers["Access-Control-Allow-Origin"]
     if len(allowed_origins) > 1:
         headers["Vary"] = "Origin"
     return headers

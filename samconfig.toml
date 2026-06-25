@@ -7,3 +7,19 @@ confirm_changeset = true
 capabilities      = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 resolve_s3        = true
 parameter_overrides = "file://parameters/dev.yaml"
+
+[poc.deploy.parameters]
+stack_name        = "lovv-poc-api"
+region            = "us-east-1"
+confirm_changeset = false
+capabilities      = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+resolve_s3        = true
+parameter_overrides = "file://parameters/poc.yaml"
+
+[prod.deploy.parameters]
+stack_name        = "lovv-prod-api"
+region            = "us-east-1"
+confirm_changeset = true
+capabilities      = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+resolve_s3        = true
+parameter_overrides = "file://parameters/prod.yaml"

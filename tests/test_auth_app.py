@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import auth.app as auth_app
 from auth.app import handle_request
 from auth.authorizer import lambda_handler as authorizer_handler
 from auth.provider_verifier import ProviderIdentity, ProviderValidationError
@@ -62,6 +63,20 @@ class FakeProviderVerifier:
             display_name="Kakao User",
             avatar_url="https://images.example.com/kakao.png",
         )
+
+
+class FakeMigrationDb:
+    def __init__(self, errors=None):
+        self.errors = list(errors or [])
+        self.statements = []
+
+    def execute(self, statement, include_result_metadata=True):
+        self.statements.append(statement)
+        if self.errors:
+            error = self.errors.pop(0)
+            if error:
+                raise error
+        return {}
 
 
 def make_event(method, path, body=None, headers=None, cookies=None, authorizer_context=None):
@@ -536,6 +551,24 @@ class AuthAppTest(unittest.TestCase):
             self.assertEqual(response["statusCode"], 200)
             self.assertEqual(body["user"]["roles"], [])
             self.assertEqual(verify_access_token(body["accessToken"])["roles"], [])
+
+    def test_warm_start_schema_patch_treats_duplicate_column_as_success(self):
+        db = FakeMigrationDb(errors=[Exception("Duplicate column name 'birth_date'")])
+
+        with patch("shared.database.create_database_client", return_value=db):
+            completed = auth_app._attempt_warm_start_schema_patch()
+
+        self.assertTrue(completed)
+        self.assertEqual(len(db.statements), 4)
+
+    def test_warm_start_schema_patch_reports_unexpected_errors_for_retry(self):
+        db = FakeMigrationDb(errors=[RuntimeError("temporary db outage")])
+
+        with patch("shared.database.create_database_client", return_value=db):
+            completed = auth_app._attempt_warm_start_schema_patch()
+
+        self.assertFalse(completed)
+        self.assertEqual(len(db.statements), 4)
 
     def test_me_returns_saved_preferences_with_selected_theme_ids_alias(self):
         with patch.dict(os.environ, AUTH_ENV, clear=True):

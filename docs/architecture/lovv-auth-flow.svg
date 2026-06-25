@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Inter', 'Pretendard', -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A"/>
+      <stop offset="100%" style="stop-color:#1E293B"/>
+    </linearGradient>
+    <linearGradient id="userGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="cfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B"/>
+      <stop offset="100%" style="stop-color:#D97706"/>
+    </linearGradient>
+    <linearGradient id="gwGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6"/>
+      <stop offset="100%" style="stop-color:#2563EB"/>
+    </linearGradient>
+    <linearGradient id="authGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6"/>
+      <stop offset="100%" style="stop-color:#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="googleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#EA4335"/>
+      <stop offset="100%" style="stop-color:#C5221F"/>
+    </linearGradient>
+    <linearGradient id="kakaoGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FEE500"/>
+      <stop offset="100%" style="stop-color:#F9D71C"/>
+    </linearGradient>
+    <linearGradient id="rdsGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#EF4444"/>
+      <stop offset="100%" style="stop-color:#DC2626"/>
+    </linearGradient>
+    <linearGradient id="ddbGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FACC15"/>
+      <stop offset="100%" style="stop-color:#EAB308"/>
+    </linearGradient>
+    <linearGradient id="smGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6B7280"/>
+      <stop offset="100%" style="stop-color:#4B5563"/>
+    </linearGradient>
+
+    <filter id="shadow2" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+
+    <marker id="seqArrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#60A5FA">
+      <polygon points="0 0, 8 3, 0 6"/>
+    </marker>
+    <marker id="seqArrowBack" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#34D399">
+      <polygon points="0 0, 8 3, 0 6"/>
+    </marker>
+    <marker id="seqArrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#F87171">
+      <polygon points="0 0, 8 3, 0 6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="url(#bgGrad2)" rx="12"/>
+
+  <!-- Title -->
+  <text x="600" y="38" text-anchor="middle" fill="#F8FAFC" font-size="20" font-weight="700">Lovv 인증 흐름 (Authentication Flow)</text>
+  <text x="600" y="58" text-anchor="middle" fill="#94A3B8" font-size="11">Google / Kakao 소셜 로그인 → JWT 발급 → Session Cookie → 인증된 API 호출</text>
+
+  <!-- ===================== PARTICIPANTS ===================== -->
+  <!-- User -->
+  <rect x="60" y="80" width="120" height="42" rx="8" fill="url(#userGrad)" filter="url(#shadow2)"/>
+  <text x="120" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">👤 사용자</text>
+  <line x1="120" y1="122" x2="120" y2="830" stroke="#10B981" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+
+  <!-- CloudFront -->
+  <rect x="215" y="80" width="120" height="42" rx="8" fill="url(#cfGrad)" filter="url(#shadow2)"/>
+  <text x="275" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">☁️ CloudFront</text>
+  <line x1="275" y1="122" x2="275" y2="830" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.3"/>
+
+  <!-- API Gateway -->
+  <rect x="370" y="80" width="130" height="42" rx="8" fill="url(#gwGrad2)" filter="url(#shadow2)"/>
+  <text x="435" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">🚪 API Gateway</text>
+  <line x1="435" y1="122" x2="435" y2="830" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.3"/>
+
+  <!-- AuthFunction -->
+  <rect x="530" y="80" width="130" height="42" rx="8" fill="url(#authGrad)" filter="url(#shadow2)"/>
+  <text x="595" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">⚡ AuthFunction</text>
+  <line x1="595" y1="122" x2="595" y2="830" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.3"/>
+
+  <!-- Google/Kakao -->
+  <rect x="700" y="80" width="120" height="42" rx="8" fill="url(#googleGrad)" filter="url(#shadow2)"/>
+  <text x="760" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">🔑 OAuth IdP</text>
+  <line x1="760" y1="122" x2="760" y2="830" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.2"/>
+
+  <!-- RDS -->
+  <rect x="855" y="80" width="120" height="42" rx="8" fill="url(#rdsGrad2)" filter="url(#shadow2)"/>
+  <text x="915" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">🗄️ RDS MySQL</text>
+  <line x1="915" y1="122" x2="915" y2="830" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.2"/>
+
+  <!-- DynamoDB -->
+  <rect x="1000" y="80" width="130" height="42" rx="8" fill="url(#ddbGrad2)" filter="url(#shadow2)"/>
+  <text x="1065" y="105" text-anchor="middle" fill="#422006" font-size="12" font-weight="700">⚡ DynamoDB</text>
+  <line x1="1065" y1="122" x2="1065" y2="830" stroke="#FACC15" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.2"/>
+
+  <!-- ===================== PHASE 1: LOGIN ===================== -->
+  <rect x="40" y="140" width="1130" height="22" rx="4" fill="#1E293B" stroke="#334155" stroke-width="0.5"/>
+  <text x="600" y="155" text-anchor="middle" fill="#60A5FA" font-size="10" font-weight="600">PHASE 1: 소셜 로그인 요청 (Google / Kakao)</text>
+
+  <!-- Step 1: User → CF -->
+  <line x1="125" y1="180" x2="268" y2="180" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="135" y="167" width="120" height="18" rx="3" fill="#1E3A5F" opacity="0.8"/>
+  <text x="195" y="180" text-anchor="middle" fill="#93C5FD" font-size="9">POST /auth/google</text>
+  <text x="195" y="195" text-anchor="middle" fill="#64748B" font-size="8">{id_token} or {code}</text>
+
+  <!-- Step 2: CF → GW -->
+  <line x1="280" y1="210" x2="428" y2="210" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="310" y="197" width="90" height="18" rx="3" fill="#1E3A5F" opacity="0.8"/>
+  <text x="355" y="210" text-anchor="middle" fill="#93C5FD" font-size="9">Forward</text>
+
+  <!-- Step 3: GW → Auth Lambda -->
+  <line x1="440" y1="240" x2="588" y2="240" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="460" y="227" width="110" height="18" rx="3" fill="#1E3A5F" opacity="0.8"/>
+  <text x="515" y="240" text-anchor="middle" fill="#93C5FD" font-size="9">Lambda Invoke</text>
+
+  <!-- Step 4: Auth → OAuth -->
+  <line x1="600" y1="270" x2="753" y2="270" stroke="#F87171" stroke-width="1.5" marker-end="url(#seqArrowRed)"/>
+  <rect x="615" y="257" width="120" height="18" rx="3" fill="#3B1818" opacity="0.8"/>
+  <text x="675" y="270" text-anchor="middle" fill="#FCA5A5" font-size="9">Verify ID Token</text>
+
+  <!-- Step 4 response -->
+  <line x1="753" y1="295" x2="600" y2="295" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)" stroke-dasharray="4,2"/>
+  <rect x="620" y="282" width="120" height="18" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="680" y="295" text-anchor="middle" fill="#6EE7B7" font-size="9">✓ Claims (sub, email)</text>
+
+  <!-- ===================== PHASE 2: PERSIST ===================== -->
+  <rect x="40" y="320" width="1130" height="22" rx="4" fill="#1E293B" stroke="#334155" stroke-width="0.5"/>
+  <text x="600" y="335" text-anchor="middle" fill="#A78BFA" font-size="10" font-weight="600">PHASE 2: 사용자 · 세션 영속화</text>
+
+  <!-- Step 5: Auth → RDS upsert -->
+  <line x1="600" y1="360" x2="908" y2="360" stroke="#F87171" stroke-width="1.5" marker-end="url(#seqArrowRed)"/>
+  <rect x="680" y="347" width="180" height="18" rx="3" fill="#3B1818" opacity="0.8"/>
+  <text x="770" y="360" text-anchor="middle" fill="#FCA5A5" font-size="9">UPSERT users + social_accounts</text>
+
+  <!-- Step 5 response -->
+  <line x1="908" y1="385" x2="600" y2="385" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)" stroke-dasharray="4,2"/>
+  <rect x="700" y="372" width="130" height="18" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="765" y="385" text-anchor="middle" fill="#6EE7B7" font-size="9">✓ user_id returned</text>
+
+  <!-- Step 6: Auth → DDB session -->
+  <line x1="600" y1="415" x2="1058" y2="415" stroke="#FACC15" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="740" y="402" width="210" height="18" rx="3" fill="#422006" opacity="0.8"/>
+  <text x="845" y="415" text-anchor="middle" fill="#FDE68A" font-size="9">PutItem: auth_session (TTL: 14 days)</text>
+
+  <!-- Step 6 response -->
+  <line x1="1058" y1="440" x2="600" y2="440" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)" stroke-dasharray="4,2"/>
+  <rect x="750" y="427" width="180" height="18" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="840" y="440" text-anchor="middle" fill="#6EE7B7" font-size="9">✓ sessionId + refreshToken</text>
+
+  <!-- ===================== PHASE 3: RESPONSE ===================== -->
+  <rect x="40" y="465" width="1130" height="22" rx="4" fill="#1E293B" stroke="#334155" stroke-width="0.5"/>
+  <text x="600" y="480" text-anchor="middle" fill="#34D399" font-size="10" font-weight="600">PHASE 3: JWT 발급 + Cookie 설정</text>
+
+  <!-- Step 7: Auth signs JWT -->
+  <rect x="550" y="500" width="90" height="30" rx="6" fill="#4C1D95" opacity="0.5" stroke="#7C3AED" stroke-width="0.5"/>
+  <text x="595" y="515" text-anchor="middle" fill="#C4B5FD" font-size="9">JWT Sign</text>
+  <text x="595" y="528" text-anchor="middle" fill="#8B5CF6" font-size="8">(HMAC-SHA256)</text>
+
+  <!-- Step 8: Auth → GW response -->
+  <line x1="588" y1="545" x2="440" y2="545" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)"/>
+  <rect x="445" y="532" width="130" height="18" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="510" y="545" text-anchor="middle" fill="#6EE7B7" font-size="9">200 + Set-Cookie</text>
+
+  <!-- Step 9: GW → CF -->
+  <line x1="428" y1="570" x2="280" y2="570" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)"/>
+  <rect x="310" y="557" width="100" height="18" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="360" y="570" text-anchor="middle" fill="#6EE7B7" font-size="9">Forward</text>
+
+  <!-- Step 10: CF → User -->
+  <line x1="268" y1="595" x2="125" y2="595" stroke="#34D399" stroke-width="1.5" marker-end="url(#seqArrowBack)"/>
+  <rect x="128" y="577" width="130" height="25" rx="3" fill="#14332A" opacity="0.8"/>
+  <text x="193" y="592" text-anchor="middle" fill="#6EE7B7" font-size="9">{ access_token: JWT }</text>
+  <text x="193" y="603" text-anchor="middle" fill="#34D399" font-size="8">+ HttpOnly Cookie 🍪</text>
+
+  <!-- ===================== PHASE 4: AUTHENTICATED API ===================== -->
+  <rect x="40" y="625" width="1130" height="22" rx="4" fill="#1E293B" stroke="#334155" stroke-width="0.5"/>
+  <text x="600" y="640" text-anchor="middle" fill="#FBBF24" font-size="10" font-weight="600">PHASE 4: 인증된 API 호출 (이후 모든 요청)</text>
+
+  <!-- Step 11: User → GW with auth -->
+  <line x1="125" y1="665" x2="428" y2="665" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="165" y="652" width="210" height="18" rx="3" fill="#1E3A5F" opacity="0.8"/>
+  <text x="270" y="665" text-anchor="middle" fill="#93C5FD" font-size="9">GET /auth/me (Cookie: lovv_session)</text>
+
+  <!-- Step 12: GW → Authorizer box -->
+  <rect x="395" y="688" width="80" height="25" rx="5" fill="#1E3A5F" stroke="#3B82F6" stroke-width="0.5"/>
+  <text x="435" y="704" text-anchor="middle" fill="#60A5FA" font-size="8">Authorizer</text>
+  <text x="435" y="714" text-anchor="middle" fill="#3B82F6" font-size="7">JWT 검증</text>
+
+  <!-- Step 13: GW → Auth Lambda -->
+  <line x1="440" y1="725" x2="588" y2="725" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="460" y="712" width="100" height="18" rx="3" fill="#1E3A5F" opacity="0.8"/>
+  <text x="510" y="725" text-anchor="middle" fill="#93C5FD" font-size="9">Invoke (userId)</text>
+
+  <!-- Step 14: Auth → DDB check session -->
+  <line x1="600" y1="750" x2="1058" y2="750" stroke="#FACC15" stroke-width="1.5" marker-end="url(#seqArrow)"/>
+  <rect x="740" y="737" width="190" height="18" rx="3" fill="#422006" opacity="0.8"/>
+  <text x="835" y="750" text-anchor="middle" fill="#FDE68A" font-size="9">Query: session by cookie hash</text>
+
+  <!-- Step 15: Auth → RDS get user -->
+  <line x1="600" y1="775" x2="908" y2="775" stroke="#F87171" stroke-width="1.5" marker-end="url(#seqArrowRed)"/>
+  <rect x="680" y="762" width="160" height="18" rx="3" fill="#3B1818" opacity="0.8"/>
+  <text x="760" y="775" text-anchor="middle" fill="#FCA5A5" font-size="9">SELECT user info by id</text>
+
+  <!-- Final response back -->
+  <line x1="588" y1="800" x2="125" y2="800" stroke="#34D399" stroke-width="2" marker-end="url(#seqArrowBack)"/>
+  <rect x="260" y="787" width="200" height="18" rx="3" fill="#14332A" opacity="0.9"/>
+  <text x="360" y="800" text-anchor="middle" fill="#6EE7B7" font-size="10" font-weight="600">200 { user: { id, email, name } }</text>
+
+  <!-- ===================== NOTES ===================== -->
+  <rect x="40" y="840" width="1120" height="45" rx="6" fill="#1E293B" stroke="#334155" stroke-width="0.5"/>
+  <text x="60" y="857" fill="#64748B" font-size="9" font-weight="600">NOTE:</text>
+  <text x="100" y="857" fill="#475569" font-size="9">• JWT TTL: 900s (15분) · Refresh Session TTL: 1,209,600s (14일) · Cookie: HttpOnly, Secure, SameSite=None</text>
+  <text x="100" y="872" fill="#475569" font-size="9">• Authorizer Lambda는 Secrets Manager에서 JWT signing key를 캐시하여 검증 · DynamoDB auth_sessions 테이블은 VPC Gateway Endpoint 경유</text>
+
+  <text x="600" y="895" text-anchor="middle" fill="#475569" font-size="8">© 2026 Lovv · Authentication Sequence Diagram</text>
+</svg>

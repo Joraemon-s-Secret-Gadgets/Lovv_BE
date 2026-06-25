@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "EnvName",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "LovvDbName",
+    "ParameterValue": "lovvprod"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t4g.small"
+  },
+  {
+    "ParameterKey": "DBAllocatedStorage",
+    "ParameterValue": "100"
+  },
+  {
+    "ParameterKey": "DBMasterUsername",
+    "ParameterValue": "lovvadmin"
+  },
+  {
+    "ParameterKey": "RDSDeletionProtection",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "DBMultiAZ",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "VpcCidr",
+    "ParameterValue": "10.42.0.0/16"
+  },
+  {
+    "ParameterKey": "PrivateSubnetACidr",
+    "ParameterValue": "10.42.10.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnetCCidr",
+    "ParameterValue": "10.42.20.0/24"
+  },
+  {
+    "ParameterKey": "DevMysqlIngressCidr",
+    "ParameterValue": "10.42.0.0/16"
+  }
+]

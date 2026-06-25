@@ -1,7 +1,12 @@
+# ==============================================================================
+# 템플릿 메타데이터 및 설명
+# ==============================================================================
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Lovv stateful data stack outside the AWS SAM application stack.
 
-# 입력 파라미터: dev Data Stack 생성 시 환경명, DB 설정, VPC CIDR을 지정한다.
+# ==============================================================================
+# 입력 파라미터 (Parameters)
+# ==============================================================================
 Parameters:
   EnvName:
     Type: String
@@ -62,6 +67,13 @@ Parameters:
     Type: String
     Default: 10.40.0.0/16
     Description: CIDR allowed to connect to MySQL in development.
+  DBMultiAZ:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable Multi-AZ deployment for RDS instance class.
   NatInstanceType:
     Type: String
     Default: t4g.nano
@@ -71,11 +83,16 @@ Parameters:
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
     Description: Amazon Linux 2023 ARM64 AMI for the optional dev NAT instance.
 
-# 조건: RDS 삭제 보호는 파라미터로 켜고 끌 수 있지만, 기본값은 보호 활성화이다.
+# ==============================================================================
+# 배포 조건문 정의 (Conditions)
+# ==============================================================================
 Conditions:
   EnableRDSDeletionProtection: !Equals [!Ref RDSDeletionProtection, "true"]
   CreateNatInstance: !Equals [!Ref EnableNatInstance, "true"]
 
+# ==============================================================================
+# 리소스 정의 (Resources)
+# ==============================================================================
 Resources:
   # 개발용 VPC: SAM 앱 스택과 분리된 stateful Data Stack 네트워크 경계이다.
   LovvDevVPC:
@@ -342,6 +359,21 @@ Resources:
       PrivateDnsEnabled: true
       SubnetIds:
         - !Ref LovvPrivateSubnetA
+        - !Ref LovvPrivateSubnetC
+      SecurityGroupIds:
+        - !Ref LovvEndpointSecurityGroup
+
+  # SSM VPC Endpoint: VPC 내부 Lambda가 Parameter Store 값을 private 경로로 조회한다.
+  SSMVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LovvDevVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref LovvPrivateSubnetA
+        - !Ref LovvPrivateSubnetC
       SecurityGroupIds:
         - !Ref LovvEndpointSecurityGroup
 
@@ -433,6 +465,7 @@ Resources:
       AllocatedStorage: !Ref DBAllocatedStorage
       StorageEncrypted: true
       PubliclyAccessible: false
+      MultiAZ: !Ref DBMultiAZ
       BackupRetentionPeriod: 7
       CopyTagsToSnapshot: true
       DeletionProtection: !If [EnableRDSDeletionProtection, true, false]
@@ -1013,7 +1046,9 @@ Resources:
       Type: String
       Value: !Sub https://${ImageCloudFrontDistribution.DomainName}
 
-# Outputs: 배포 직후 CloudFormation 콘솔/CLI에서 확인할 수 있는 주요 식별자이다.
+# ==============================================================================
+# 출력 파라미터 (Outputs)
+# ==============================================================================
 Outputs:
   VpcId:
     Description: Development VPC ID.

@@ -1,3 +1,7 @@
+# @file src/agentcore/app.py
+# @description AWS Bedrock Agent를 활용한 AI 기반 소도시 일정 생성 및 대화 인터페이스 핵심 Lambda 핸들러.
+# @lastModified 2026-06-23
+
 import base64
 import hashlib
 import json
@@ -5,17 +9,21 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-import boto3
-
 from shared.http import error_response, json_response
+from shared.logger import Tag, get_logger
 
 
+# 지원하는 진입 채널 타입 (지도 마커, 일반 챗봇 대화, 홈 추천 피드)
 ENTRY_TYPES = {"map_marker", "chat", "home_recommendation"}
+# 지원하는 국가 코드
 COUNTRIES = {"KR", "JP"}
+# 여행 기간 유형 정의 (당일치기, 1박2일 등)
 TRIP_TYPES = {"daytrip", "2d1n", "3d2n", "4d3n", "5d4n"}
+LOGGER = get_logger(__name__)
 
 
 class AgentCoreRequestError(Exception):
+    """요청 검증 및 내부 처리 오류 시 발생하는 예외 클래스"""
     def __init__(self, status_code, code, message):
         super().__init__(message)
         self.status_code = status_code
@@ -24,62 +32,85 @@ class AgentCoreRequestError(Exception):
 
 
 def lambda_handler(event, context):
+    """AWS Lambda 실행 진입점"""
     return handle_request(event or {})
 
 
 def handle_request(event):
+    """API Gateway/Function URL 요청 진입로 및 에러 핸들링 구조"""
     try:
         return _handle_request(event or {})
     except AgentCoreRequestError as error:
+        # 검증 오류 등 커스텀 에러 처리
         return error_response(error.status_code, error.code, error.message, event=event)
     except Exception:
+        # 예상하지 못한 서버 오류 처리
         return error_response(500, "INTERNAL_ERROR", "Recommendation API is unavailable", event=event)
 
 
 def _handle_request(event):
+    """요청 메소드/경로 검사 및 요청 페이로드 검증"""
     method = _event_method(event)
     path = _event_path(event)
+    
+    # OPTIONS preflight 요청 지원
     if method == "OPTIONS":
         return json_response(200, {}, event=event)
-    # Function URL invocations arrive at "/" — allow that in addition to the API Gateway path
+        
+    # POST /api/v1/recommendations 및 루트 경로("/") 허용 (Function URL 대응)
     if method != "POST" or path not in ("/api/v1/recommendations", "/"):
         return error_response(404, "NOT_FOUND", "Route not found", event=event)
 
+    # 1. JSON 바디 파싱 및 스키마/값 정합성 검증
     payload = _validate_payload(_json_body(event))
 
-    # Support mock query param or environment variable override
+    # 2. 페이로드의 mock=True 또는 환경변수 설정 시 모의 데이터 즉시 반환
     if payload.get("mock") or os.environ.get("MOCK_RECOMMENDATION") == "true":
         return json_response(200, _mock_recommendation(payload), event=event)
 
+    # 3. AWS Bedrock Agent 런타임 호출 시도. 운영 호출 실패는 저장 가능한 mock으로 위장하지 않는다.
     try:
         return json_response(200, _invoke_bedrock_agent(payload), event=event)
     except Exception as error:
-        print(f"Bedrock AgentCore invocation failed: {str(error)}. Falling back to mock recommendation.")
-        mock_res = _mock_recommendation(payload)
-        mock_res["fallback"] = True
-        mock_res["error"] = str(error)
-        return json_response(200, mock_res, event=event)
+        LOGGER.error(
+            Tag.SYSTEM,
+            "AgentCore invocation failed entryType=%s country=%s tripType=%s errorType=%s",
+            payload.get("entryType"),
+            payload.get("country"),
+            payload.get("tripType"),
+            error.__class__.__name__,
+        )
+        return error_response(
+            502,
+            "AGENTCORE_UNAVAILABLE",
+            "Recommendation generation is temporarily unavailable",
+            event=event,
+        )
 
 
 _bedrock_client = None
 
 
 def _get_bedrock_client():
+    """boto3 Bedrock Agent 런타임 클라이언트 지연 로딩 싱글톤 구현 (us-east-1 리전 고정)"""
     global _bedrock_client
     if _bedrock_client is None:
+        import boto3
+
         _bedrock_client = boto3.client("bedrock-agentcore", region_name="us-east-1")
     return _bedrock_client
 
 
 def _invoke_bedrock_agent(payload):
-    agent_arn = os.environ.get(
-        "BEDROCK_AGENT_ARN",
-        "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM",
-    )
+    """Bedrock Agent에 정형화된 JSON 요청을 인코딩하여 전송하고, 실행 결과 스트림/출력을 수신하여 일정 응답으로 매핑"""
+    agent_arn = os.environ.get("BEDROCK_AGENT_ARN")
+    if not agent_arn:
+        raise ValueError("AgentCore runtime ARN is not configured")
 
+    # 1. 챗봇 대화의 영속성 관리를 위한 세션 식별자 확인 또는 자동 생성
     session_id = payload.get("sessionId")
     if not session_id or len(session_id) < 33:
-        session_id = f"session-{uuid.uuid4().hex}"  # 40 chars
+        session_id = f"session-{uuid.uuid4().hex}"  # 40글자 길이 식별자
 
     country = payload.get("country")
     trip_type = payload.get("tripType")
@@ -88,7 +119,7 @@ def _invoke_bedrock_agent(payload):
     destination_id = payload.get("destinationId", "")
     query = payload.get("naturalLanguageQuery", "")
 
-    # Send structured payload matching AgentCore's expected input format
+    # 2. Bedrock Agent에 주입할 표준 요청 페이로드 구조화
     now = datetime.now(timezone.utc)
     structured_payload = {
         "entryType": payload.get("entryType", "chat"),
@@ -104,9 +135,17 @@ def _invoke_bedrock_agent(payload):
     }
 
     wrapped_payload = {"request": structured_payload}
-    print(f"[AgentCore] sending payload: {json.dumps(wrapped_payload, ensure_ascii=False)}")
+    LOGGER.info(
+        Tag.SYSTEM,
+        "Invoking AgentCore runtime entryType=%s country=%s tripType=%s themeCount=%s hasLocation=%s",
+        structured_payload["entryType"],
+        structured_payload["country"],
+        structured_payload["tripType"],
+        len(structured_payload["themes"]),
+        bool(structured_payload["userLocation"]),
+    )
 
-    # payload must be bytes
+    # 3. UTF-8 바이트로 인코딩하여 Bedrock API 전송
     bedrock_payload = json.dumps(wrapped_payload).encode("utf-8")
 
     client = _get_bedrock_client()
@@ -116,9 +155,9 @@ def _invoke_bedrock_agent(payload):
         payload=bedrock_payload,
     )
 
-    print(f"[AgentCore] response keys: {list(response.keys())}")
+    LOGGER.info(Tag.SYSTEM, "AgentCore runtime returned keys=%s", sorted(response.keys()))
 
-    # Try common response body keys
+    # 4. Bedrock 런타임의 반환 객체(응답 바디, 스트림 등)를 순차적으로 역직렬화 시도
     raw_body = None
     for key in ("response", "body", "completion", "outputText"):
         if key in response:
@@ -128,37 +167,44 @@ def _invoke_bedrock_agent(payload):
             elif isinstance(candidate, (str, bytes)):
                 raw_body = candidate if isinstance(candidate, bytes) else candidate.encode("utf-8")
             if raw_body:
-                print(f"[AgentCore] read from key='{key}', length={len(raw_body)}")
+                LOGGER.info(Tag.SYSTEM, "AgentCore runtime body read key=%s byteLength=%s", key, len(raw_body))
                 break
 
     if raw_body is None:
-        print(f"[AgentCore] no readable body found in response: {response}")
         raise ValueError("AgentCore response has no readable body")
-
-    print(f"[AgentCore] raw response (first 500 chars): {raw_body[:500]}")
 
     try:
         response_data = json.loads(raw_body)
     except json.JSONDecodeError:
-        # Response might be plain text or markdown
+        # JSON 포맷이 아닌 경우 일반 텍스트 포맷으로 매핑
         response_data = {"text": raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body}
 
-    print(f"[AgentCore] parsed response type={type(response_data).__name__}, keys={list(response_data.keys()) if isinstance(response_data, dict) else 'N/A'}")
+    LOGGER.info(
+        Tag.SYSTEM,
+        "AgentCore runtime response parsed type=%s keys=%s",
+        type(response_data).__name__,
+        sorted(response_data.keys()) if isinstance(response_data, dict) else [],
+    )
 
-    # Unwrap "result" envelope if present
+    # 5. 응답 본문 내 결과(result) 노드 추출
     result = response_data.get("result", response_data) if isinstance(response_data, dict) else response_data
 
     itinerary = result.get("itinerary") if isinstance(result, dict) else None
     destination = result.get("destination") if isinstance(result, dict) else None
     explainability = result.get("explainability") if isinstance(result, dict) else None
 
-    print(f"[AgentCore] itinerary={itinerary}, days_count={len(itinerary.get('days', [])) if isinstance(itinerary, dict) else 'N/A'}")
+    LOGGER.info(
+        Tag.SYSTEM,
+        "AgentCore itinerary mapped hasDestination=%s dayCount=%s",
+        bool(destination),
+        len(itinerary.get("days", [])) if isinstance(itinerary, dict) else 0,
+    )
 
     res = _mock_recommendation(payload)
     res["mock"] = False
     res["sessionId"] = session_id
 
-    # Override destination if AgentCore provided one
+    # 6. Bedrock Agent가 반환한 실제 소도시 정보로 오버라이드
     if destination and any(v for v in destination.values() if v is not None):
         res["destination"] = {
             "destinationId": destination.get("destinationId") or res["destination"]["destinationId"],
@@ -168,7 +214,7 @@ def _invoke_bedrock_agent(payload):
             "region": destination.get("region"),
         }
 
-    # Override explanations if AgentCore provided them
+    # 7. Bedrock Agent가 반환한 AI 설명 근거 및 이유 데이터를 적용
     if explainability:
         res["explanations"] = {
             "userNotice": explainability.get("userNotice") or "",
@@ -176,7 +222,7 @@ def _invoke_bedrock_agent(payload):
             "recommendationReasons": explainability.get("recommendationReasons", []),
         }
 
-    # Override itinerary only if AgentCore returned actual days
+    # 8. 생성된 일(Day)별 여행 코스가 실존할 때만 기본 모의 일정을 대체하여 덮어쓰기
     if isinstance(itinerary, dict) and itinerary.get("days"):
         res["itinerary"] = {
             "tripType": itinerary.get("tripType", payload["tripType"]),
@@ -192,6 +238,7 @@ def _invoke_bedrock_agent(payload):
 
 
 def _validate_payload(body):
+    """입력 페이로드 정합성 및 필수 필드 검증"""
     entry_type = body.get("entryType")
     if entry_type not in ENTRY_TYPES:
         raise AgentCoreRequestError(400, "VALIDATION_ERROR", "entryType is invalid")
@@ -212,6 +259,7 @@ def _validate_payload(body):
 
 
 def _mock_recommendation(payload):
+    """Bedrock Agent 연동 연기 시 프론트엔드 연동 테스트용 모의 일정 생성기"""
     now = _now_iso()
     destination_id = payload.get("destinationId") or ((payload.get("city") or {}).get("cityId")) or f"{payload['country']}-mock-city"
     recommendation_id = _stable_id("rec", payload)
@@ -317,6 +365,7 @@ def _mock_recommendation(payload):
 
 
 def _duration_label(trip_type):
+    """여행 기간 유형 키(daytrip, 2d1n 등)에 대응하는 한글 레이블 반환"""
     labels = {
         "daytrip": "당일치기",
         "2d1n": "1박 2일",
@@ -328,11 +377,13 @@ def _duration_label(trip_type):
 
 
 def _stable_id(prefix, value):
+    """요청 및 응답의 고유 속성값을 활용한 SHA-256 해시 기반의 고유 ID(기기 독립적) 생성"""
     digest = hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:24]
     return f"{prefix}-{digest}"
 
 
 def _json_body(event):
+    """API Gateway 또는 Function URL 요청 바디에서 JSON 데이터 파싱 및 Base64 디코딩 수행"""
     raw_body = event.get("body")
     if raw_body in (None, ""):
         return {}
@@ -351,12 +402,15 @@ def _json_body(event):
 
 
 def _event_method(event):
+    """요청 메소드(HTTP Method) 추출"""
     return (((event.get("requestContext") or {}).get("http") or {}).get("method") or event.get("httpMethod") or "").upper()
 
 
 def _event_path(event):
+    """요청 URL 경로 추출"""
     return event.get("rawPath") or event.get("path") or ""
 
 
 def _now_iso():
+    """현재 시간을 UTC 기준 ISO 8601 포맷으로 변환"""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

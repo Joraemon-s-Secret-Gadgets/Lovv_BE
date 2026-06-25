@@ -3,9 +3,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-
-# Ensure mock mode is used during unit tests
-os.environ["MOCK_RECOMMENDATION"] = "true"
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -22,6 +20,13 @@ def make_event(body, headers=None):
 
 
 class AgentCoreMockAppTest(unittest.TestCase):
+    def setUp(self):
+        self.env_patcher = patch.dict(os.environ, {"MOCK_RECOMMENDATION": "true"}, clear=False)
+        self.env_patcher.start()
+
+    def tearDown(self):
+        self.env_patcher.stop()
+
     def test_returns_mock_recommendation_without_bedrock_call(self):
         response = handle_request(
             make_event(
@@ -62,6 +67,28 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 400)
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+
+    def test_agentcore_failure_returns_error_without_savable_mock_or_internal_detail(self):
+        with patch.dict(os.environ, {"MOCK_RECOMMENDATION": "false"}, clear=False):
+            with patch("agentcore.app._invoke_bedrock_agent", side_effect=RuntimeError("secret backend failure")):
+                response = handle_request(
+                    make_event(
+                        {
+                            "entryType": "chat",
+                            "country": "KR",
+                            "tripType": "2d1n",
+                            "themes": ["food_local"],
+                            "includeFestivals": True,
+                            "naturalLanguageQuery": "바다와 미식 중심 일정",
+                        }
+                    )
+                )
+        body = json.loads(response["body"])
+
+        self.assertEqual(response["statusCode"], 502)
+        self.assertEqual(body["error"]["code"], "AGENTCORE_UNAVAILABLE")
+        self.assertNotIn("secret backend failure", response["body"])
+        self.assertNotIn("saveCompatibility", response["body"])
 
     def test_rejects_unsupported_country(self):
         response = handle_request(

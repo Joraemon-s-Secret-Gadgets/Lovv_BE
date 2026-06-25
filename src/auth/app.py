@@ -1,6 +1,6 @@
 # @file src/auth/app.py
-# @description Social auth/session Lambda handler for Lovv API.
-# @lastModified 2026-06-13
+# @description 소셜 로그인(구글/카카오) 연동, Cognito 연동 세션 검증, JWT 토큰 발급 및 DynamoDB 기반 리프레시 세션 관리를 수행하는 Lambda 핸들러.
+# @lastModified 2026-06-23
 
 import base64
 import hashlib
@@ -24,46 +24,74 @@ from shared.logger import Tag, get_logger
 LOGGER = get_logger(__name__)
 
 
-# Each MySqlClient.execute() call opens a brand-new TCP connection to RDS over the VPC and closes
-# it again — there is no pooling. Running this 3-statement ALTER TABLE self-migration on every
-# single invocation cost 3 extra connection round-trips (open+query+close each, even though the
-# queries fail fast after the first successful run) on top of whatever the actual request handler
-# needed — on every login/session/profile request. That was the dominant cause of slow logins.
-# Lambda reuses warm execution environments across many invocations, so gating this on a
-# module-level flag means the cost is paid at most once per warm container instead of every request.
+# Lambda 컨테이너가 웜 스타트될 때 DB 스키마 자가 마이그레이션(birth_date, gender 등 컬럼 자동 추가)
+# 실행 여부를 기록하는 모듈 레벨 플래그. DB 접속 연결 오버헤드를 낮추기 위해 컨테이너 당 단 1회만 시도되도록 게이팅한다.
 _migration_attempted = False
 
 
 def lambda_handler(event, context):
+    """AWS Lambda 실행 진입점. RDS MySQL 테이블 컬럼 유무를 검사하고 자가 복구 마이그레이션을 1회 수행"""
     global _migration_attempted
     if not _migration_attempted:
-        _migration_attempted = True
-        try:
-            from shared.database import create_database_client
-            db = create_database_client()
-            try:
-                db.execute("ALTER TABLE users ADD COLUMN birth_date DATE NULL AFTER avatar_url", include_result_metadata=False)
-            except Exception:
-                pass
-            try:
-                db.execute("ALTER TABLE users ADD COLUMN gender VARCHAR(10) NULL AFTER birth_date", include_result_metadata=False)
-            except Exception:
-                pass
-            try:
-                db.execute("ALTER TABLE users ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'active' AFTER birth_date", include_result_metadata=False)
-            except Exception:
-                pass
-            try:
-                db.execute("ALTER TABLE users ADD COLUMN role VARCHAR(30) NOT NULL DEFAULT 'user' AFTER status", include_result_metadata=False)
-            except Exception:
-                pass
-        except Exception as e:
-            print("VPC Migration helper warning:", e)
+        _migration_attempted = _attempt_warm_start_schema_patch()
 
     return handle_request(event or {})
 
 
+def _attempt_warm_start_schema_patch():
+    try:
+        from shared.database import create_database_client
+
+        db = create_database_client()
+    except Exception as error:
+        LOGGER.warning(
+            Tag.DB,
+            "Auth warm-start schema patch skipped errorType=%s",
+            error.__class__.__name__,
+        )
+        return False
+
+    statements = (
+        "ALTER TABLE users ADD COLUMN birth_date DATE NULL AFTER avatar_url",
+        "ALTER TABLE users ADD COLUMN gender VARCHAR(10) NULL AFTER birth_date",
+        "ALTER TABLE users ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'active' AFTER birth_date",
+        "ALTER TABLE users ADD COLUMN role VARCHAR(30) NOT NULL DEFAULT 'user' AFTER status",
+    )
+    completed = True
+    for statement in statements:
+        try:
+            db.execute(statement, include_result_metadata=False)
+        except Exception as error:
+            if _is_expected_schema_patch_error(error):
+                continue
+            completed = False
+            LOGGER.warning(
+                Tag.DB,
+                "Auth warm-start schema patch failed statement=%s errorType=%s",
+                _schema_patch_statement_name(statement),
+                error.__class__.__name__,
+            )
+    return completed
+
+
+def _is_expected_schema_patch_error(error):
+    message = str(error).lower()
+    expected_fragments = (
+        "duplicate column",
+        "already exists",
+        "duplicate column name",
+        "errno 1060",
+    )
+    return any(fragment in message for fragment in expected_fragments)
+
+
+def _schema_patch_statement_name(statement):
+    match = re.search(r"ADD COLUMN\s+([a-zA-Z0-9_]+)", statement)
+    return match.group(1) if match else "unknown"
+
+
 def handle_request(event, provider_verifier=None, user_repository=None, session_repository=None, preference_repository=None):
+    """인증 라우터 진입 및 발생하는 모든 인증 도메인 예외 일괄 로깅/처리"""
     try:
         return _handle_request(event or {}, provider_verifier, user_repository, session_repository, preference_repository)
     except (AuthRequestError, ProviderValidationError, UserRepositoryError, SessionRepositoryError) as error:
@@ -81,11 +109,15 @@ def handle_request(event, provider_verifier=None, user_repository=None, session_
 
 
 def _handle_request(event, provider_verifier=None, user_repository=None, session_repository=None, preference_repository=None):
+    """HTTP Method 및 Endpoint 경로 매핑 처리"""
     method = _event_method(event)
     path = _event_path(event)
 
+    # OPTIONS preflight 허용
     if method == "OPTIONS":
         return json_response(200, {})
+        
+    # Cognito 인증 후 세션 동기화
     if method == "POST" and path == "/api/v1/auth/cognito/session":
         return _handle_cognito_session(
             event,
@@ -93,6 +125,8 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             session_repository,
             preference_repository,
         )
+        
+    # 구글 소셜 로그인
     if method == "POST" and path == "/api/v1/auth/google":
         return _handle_social_login(
             "google",
@@ -102,6 +136,8 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             session_repository or DynamoDbSessionRepository.from_env(),
             preference_repository or RdsDataPreferenceRepository.from_env(),
         )
+        
+    # 카카오 소셜 로그인
     if method == "POST" and path == "/api/v1/auth/kakao":
         return _handle_social_login(
             "kakao",
@@ -111,20 +147,28 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             session_repository or DynamoDbSessionRepository.from_env(),
             preference_repository or RdsDataPreferenceRepository.from_env(),
         )
+        
+    # 내 프로필 정보 및 취향 조회
     if method == "GET" and path == "/api/v1/auth/me":
         return _handle_me(
             event,
             user_repository,
             preference_repository,
         )
+        
+    # 내 프로필 상세 정보(닉네임, 생년월일, 성별 등) 업데이트
     if method == "PATCH" and path == "/api/v1/auth/me":
         return _handle_update_me(
             event,
             user_repository,
             preference_repository,
         )
+        
+    # 연동된 소셜 계정 목록 조회
     if method == "GET" and path == "/api/v1/auth/social-accounts":
         return _handle_list_social_accounts(event, user_repository or RdsDataUserRepository.from_env())
+        
+    # 추가 소셜 계정 연동 (구글/카카오)
     if method == "POST" and path in ("/api/v1/auth/link/google", "/api/v1/auth/link/kakao"):
         provider = path.rsplit("/", 1)[-1]
         return _handle_link_provider(
@@ -133,6 +177,8 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             provider_verifier or ProviderVerifier(),
             user_repository or RdsDataUserRepository.from_env(),
         )
+        
+    # 쿠키 기반 리프레시 세션을 확인하여 새 액세스 토큰(JWT) 갱신 발급
     if method == "GET" and path == "/api/v1/auth/session":
         return _handle_session(
             event,
@@ -140,6 +186,8 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
             session_repository,
             preference_repository,
         )
+        
+    # 로그아웃 및 쿠키/DynamoDB 리프레시 세션 무효화
     if method == "POST" and path == "/api/v1/auth/logout":
         return _handle_logout(event, session_repository or DynamoDbSessionRepository.from_env())
 
@@ -147,6 +195,7 @@ def _handle_request(event, provider_verifier=None, user_repository=None, session
 
 
 def _handle_social_login(provider, event, provider_verifier, user_repository, session_repository, preference_repository):
+    """소셜 OAuth 토큰 검증, 신규 유저 생성/매핑, DynamoDB 세션 생성 및 JWT 응답 반환"""
     LOGGER.info(Tag.AUTH, "Social login initiated for %s", provider)
     body = _json_body(event)
     credential_type = body.get("credentialType")
@@ -154,6 +203,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
     if not credential_type or not credential:
         raise AuthRequestError(400, "INVALID_REQUEST", "credentialType and credential are required")
 
+    # 1. 인가 코드 또는 ID 토큰을 해당 소셜 Identity Provider 모듈을 통해 검증
     identity = provider_verifier.verify(
         provider,
         credential_type,
@@ -163,6 +213,8 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
         code_verifier=body.get("codeVerifier") or body.get("code_verifier"),
     )
     now_iso = _now_iso()
+    
+    # 2. 식별 정보를 바탕으로 RDS MySQL 회원정보를 동기화(회원가입 또는 로그인 연동)
     user_result = user_repository.upsert_from_provider(identity, now_iso)
     LOGGER.info(
         Tag.DB,
@@ -171,6 +223,8 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
         user_result.user["userId"],
         user_result.is_new_user,
     )
+    
+    # 3. 새로운 리프레시 세션 정보(해시된 리프레시 토큰) 생성 및 DynamoDB 저장
     refresh_token = secrets.token_urlsafe(48)
     expires_at_epoch = _now_epoch() + _refresh_ttl_seconds()
     refresh_token_hash = _hash_token(refresh_token)
@@ -183,6 +237,8 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
         user_agent=_user_agent(event),
         ip_address=_source_ip(event),
     )
+    
+    # 4. 단기 만료 서비스 액세스 토큰(JWT) 생성
     access_token = create_access_token(
         user_id=user_result.user["userId"],
         session_id=session["sessionId"],
@@ -192,6 +248,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
     )
     preference_state = _preference_state(preference_repository, user_result.user["userId"])
 
+    # 5. HttpOnly Secure 쿠키로 리프레시 토큰 설정 및 응답 반환
     return json_response(
         200,
         {
@@ -212,6 +269,7 @@ def _handle_social_login(provider, event, provider_verifier, user_repository, se
 
 
 def _handle_cognito_session(event, user_repository, session_repository, preference_repository):
+    """AWS Cognito User Pool의 인증 결과 클레임을 수신하여 로컬 원장 데이터베이스 및 세션 동기화"""
     claims = _cognito_authorizer_claims(event)
     if not claims:
         raise AuthRequestError(401, "UNAUTHORIZED", "Missing Cognito claims")
@@ -224,6 +282,7 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
     session_repository = session_repository or DynamoDbSessionRepository.from_env()
     preference_repository = preference_repository or RdsDataPreferenceRepository.from_env()
 
+    # 1. Cognito JWT 페이로드에서 사용자 식별 정보 파싱
     email_verified = _claim_bool(claims.get("email_verified"))
     identity = ProviderIdentity(
         provider="cognito",
@@ -234,11 +293,14 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
         avatar_url=claims.get("picture"),
     )
     now_iso = _now_iso()
+    
+    # 2. Cognito 식별 정보를 로컬 RDS MySQL DB 회원정보에 Upsert 동기화
     user_result = user_repository.upsert_from_provider(identity, now_iso)
     user = dict(user_result.user)
     user["cognitoSub"] = str(cognito_sub)
     user["emailVerified"] = email_verified
 
+    # 3. 해시 처리된 리프레시 세션을 DynamoDB에 생성
     refresh_token = secrets.token_urlsafe(48)
     expires_at_epoch = _now_epoch() + _refresh_ttl_seconds()
     refresh_token_hash = _hash_token(refresh_token)
@@ -251,6 +313,8 @@ def _handle_cognito_session(event, user_repository, session_repository, preferen
         user_agent=_user_agent(event),
         ip_address=_source_ip(event),
     )
+    
+    # 4. 액세스 토큰(JWT) 발급
     access_token = create_access_token(
         user_id=user["userId"],
         session_id=session["sessionId"],
@@ -411,21 +475,26 @@ def _parse_gender(value):
 
 
 def _handle_session(event, user_repository, session_repository, preference_repository):
+    """브라우저 쿠키에서 리프레시 토큰을 읽고, DynamoDB 세션 존재 여부를 검증하여 새 JWT 토큰 발급"""
     refresh_token = _refresh_token_from_event(event)
     if not refresh_token:
         raise AuthRequestError(401, "UNAUTHORIZED", "Missing refresh session")
 
     session_repository = session_repository or DynamoDbSessionRepository.from_env()
+    # 1. 수신한 리프레시 토큰 해시로 DynamoDB의 활성 세션을 검색
     session = session_repository.find_active_by_refresh_hash(_hash_token(refresh_token), now_epoch=_now_epoch())
     if not session:
         raise AuthRequestError(401, "UNAUTHORIZED", "Missing refresh session")
 
     user_repository = user_repository or RdsDataUserRepository.from_env()
     preference_repository = preference_repository or RdsDataPreferenceRepository.from_env()
+    
+    # 2. 세션의 사용자 식별자로 로컬 RDS MySQL에서 사용자 정보 조회
     user = user_repository.get_user(session["userId"])
     if not user:
         raise AuthRequestError(404, "USER_NOT_FOUND", "User was not found")
 
+    # 3. 새로운 단기 만료 액세스 토큰(JWT) 갱신 발급
     access_token = create_access_token(
         user_id=user["userId"],
         session_id=session["sessionId"],
@@ -435,6 +504,7 @@ def _handle_session(event, user_repository, session_repository, preference_repos
     )
     preference = preference_repository.get_by_user_id(user["userId"]) if preference_repository else None
     onboarding_completed = bool(preference and preference.get("onboardingCompleted"))
+    
     return json_response(
         200,
         {
@@ -450,17 +520,24 @@ def _handle_session(event, user_repository, session_repository, preference_repos
 
 
 def _handle_logout(event, session_repository):
+    """쿠키 및 요청 헤더에서 세션을 파악하여 DynamoDB 세션을 무효화하고 쿠키 삭제"""
     refresh_token = _refresh_token_from_event(event)
     session_id = None
     if refresh_token:
         session = session_repository.find_active_by_refresh_hash(_hash_token(refresh_token), now_epoch=_now_epoch())
         if session:
             session_id = session["sessionId"]
+            
+    # 리프레시 토큰이 없거나 만료된 경우 헤더의 Bearer JWT 토큰 클레임에서 세션 ID 확인
     if session_id is None:
         session_id = _session_id_from_bearer(event)
+        
+    # 세션 ID가 확인되면 DynamoDB에서 세션 상태 무효화(Revoke)
     if session_id:
         session_repository.revoke_session(session_id, now_epoch=_now_epoch())
         LOGGER.info(Tag.AUTH, "Session revoked on logout (sessionId=%s)", session_id)
+        
+    # Set-Cookie 만료 헤더(Max-Age=0)를 설정하여 브라우저에 저장된 쿠키 제거 유도
     if not refresh_token and not session_id:
         return empty_response(204, headers={"Set-Cookie": _clear_session_cookie()})
     return json_response(200, {"success": True}, headers={"Set-Cookie": _clear_session_cookie()})

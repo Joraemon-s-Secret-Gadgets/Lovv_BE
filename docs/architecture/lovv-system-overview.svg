@@ -1,0 +1,322 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1100" font-family="'Inter', 'Pretendard', -apple-system, sans-serif">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A"/>
+      <stop offset="100%" style="stop-color:#1E293B"/>
+    </linearGradient>
+    <linearGradient id="clientGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="cdnGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B"/>
+      <stop offset="100%" style="stop-color:#D97706"/>
+    </linearGradient>
+    <linearGradient id="gwGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6"/>
+      <stop offset="100%" style="stop-color:#2563EB"/>
+    </linearGradient>
+    <linearGradient id="lambdaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6"/>
+      <stop offset="100%" style="stop-color:#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="rdsGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#EF4444"/>
+      <stop offset="100%" style="stop-color:#DC2626"/>
+    </linearGradient>
+    <linearGradient id="ddbGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FACC15"/>
+      <stop offset="100%" style="stop-color:#EAB308"/>
+    </linearGradient>
+    <linearGradient id="s3Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#D97706"/>
+      <stop offset="100%" style="stop-color:#B45309"/>
+    </linearGradient>
+    <linearGradient id="aiGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4"/>
+      <stop offset="100%" style="stop-color:#0891B2"/>
+    </linearGradient>
+    <linearGradient id="secGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6B7280"/>
+      <stop offset="100%" style="stop-color:#4B5563"/>
+    </linearGradient>
+
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="shadowSm" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- Arrow marker -->
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" fill="#94A3B8">
+      <polygon points="0 0, 10 3.5, 0 7"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" fill="#60A5FA">
+      <polygon points="0 0, 10 3.5, 0 7"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" fill="#34D399">
+      <polygon points="0 0, 10 3.5, 0 7"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1100" fill="url(#bgGrad)" rx="12"/>
+
+  <!-- Title -->
+  <text x="700" y="42" text-anchor="middle" fill="#F8FAFC" font-size="22" font-weight="700" letter-spacing="0.5">Lovv System Architecture</text>
+  <text x="700" y="64" text-anchor="middle" fill="#94A3B8" font-size="12">Serverless Travel Recommendation Platform · AWS SAM · Seoul Region (ap-northeast-2)</text>
+
+  <!-- ===================== LAYER 1: CLIENT ===================== -->
+  <rect x="520" y="85" width="360" height="70" rx="12" fill="url(#clientGrad)" filter="url(#shadow)" opacity="0.95"/>
+  <text x="560" y="115" fill="#fff" font-size="11" opacity="0.8">👤 CLIENT</text>
+  <text x="700" y="115" text-anchor="middle" fill="#fff" font-size="15" font-weight="600">React SPA</text>
+  <text x="700" y="135" text-anchor="middle" fill="#D1FAE5" font-size="11">Vite + TailwindCSS + React Router</text>
+
+  <!-- Arrow: Client → CDN -->
+  <line x1="700" y1="155" x2="700" y2="185" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6,3"/>
+
+  <!-- ===================== LAYER 2: CDN / EDGE ===================== -->
+  <rect x="260" y="190" width="880" height="70" rx="10" fill="none" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <text x="280" y="210" fill="#F59E0B" font-size="10" font-weight="600" opacity="0.7">CDN / EDGE LAYER</text>
+
+  <!-- CloudFront Frontend -->
+  <rect x="340" y="205" width="240" height="46" rx="8" fill="url(#cdnGrad)" filter="url(#shadowSm)"/>
+  <text x="460" y="226" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">☁️ CloudFront</text>
+  <text x="460" y="242" text-anchor="middle" fill="#FEF3C7" font-size="10">Frontend SPA Hosting</text>
+
+  <!-- CloudFront Image -->
+  <rect x="820" y="205" width="240" height="46" rx="8" fill="url(#cdnGrad)" filter="url(#shadowSm)"/>
+  <text x="940" y="226" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">☁️ CloudFront</text>
+  <text x="940" y="242" text-anchor="middle" fill="#FEF3C7" font-size="10">Image CDN (OAC SigV4)</text>
+
+  <!-- Arrow: CDN FE → API GW -->
+  <line x1="460" y1="251" x2="460" y2="295" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="475" y="278" fill="#CBD5E1" font-size="9">HTTPS</text>
+
+  <!-- Arrow: CDN Image → S3 Image (later) -->
+
+  <!-- ===================== LAYER 3: API GATEWAY ===================== -->
+  <rect x="130" y="300" width="740" height="90" rx="10" fill="none" stroke="#3B82F6" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <text x="150" y="318" fill="#3B82F6" font-size="10" font-weight="600" opacity="0.7">API GATEWAY LAYER</text>
+
+  <!-- HTTP API Gateway -->
+  <rect x="200" y="325" width="280" height="50" rx="8" fill="url(#gwGrad)" filter="url(#shadow)"/>
+  <text x="340" y="348" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">🚪 HTTP API Gateway</text>
+  <text x="340" y="365" text-anchor="middle" fill="#BFDBFE" font-size="10">LovvHttpApi · CORS Enabled</text>
+
+  <!-- Lambda Authorizer -->
+  <rect x="540" y="325" width="200" height="50" rx="8" fill="url(#gwGrad)" filter="url(#shadowSm)" opacity="0.85"/>
+  <text x="640" y="348" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">🔐 Lambda Authorizer</text>
+  <text x="640" y="365" text-anchor="middle" fill="#BFDBFE" font-size="10">JWT 검증 · Custom Auth</text>
+
+  <!-- Arrow GW → Authorizer -->
+  <line x1="480" y1="350" x2="535" y2="350" stroke="#60A5FA" stroke-width="1.5" marker-end="url(#arrowBlue)" stroke-dasharray="4,2"/>
+
+  <!-- ===================== LAYER 4: LAMBDA COMPUTE ===================== -->
+  <rect x="50" y="420" width="1300" height="130" rx="10" fill="none" stroke="#8B5CF6" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <text x="70" y="440" fill="#8B5CF6" font-size="10" font-weight="600" opacity="0.7">⚡ LAMBDA COMPUTE LAYER (python3.12 / arm64)</text>
+
+  <!-- Auth Lambda -->
+  <rect x="80" y="455" width="210" height="80" rx="8" fill="url(#lambdaGrad)" filter="url(#shadow)"/>
+  <text x="185" y="480" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">AuthFunction</text>
+  <text x="185" y="497" text-anchor="middle" fill="#DDD6FE" font-size="10">소셜 로그인</text>
+  <text x="185" y="511" text-anchor="middle" fill="#DDD6FE" font-size="10">세션 · 사용자 관리</text>
+  <text x="185" y="525" text-anchor="middle" fill="#C4B5FD" font-size="9">POST /auth/google, /auth/kakao ...</text>
+
+  <!-- Preferences Lambda -->
+  <rect x="310" y="455" width="210" height="80" rx="8" fill="url(#lambdaGrad)" filter="url(#shadow)"/>
+  <text x="415" y="480" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">PreferenceFunction</text>
+  <text x="415" y="497" text-anchor="middle" fill="#DDD6FE" font-size="10">온보딩 취향</text>
+  <text x="415" y="511" text-anchor="middle" fill="#DDD6FE" font-size="10">저장 · 조회</text>
+  <text x="415" y="525" text-anchor="middle" fill="#C4B5FD" font-size="9">GET/PUT /me/preferences</text>
+
+  <!-- AgentCore Lambda -->
+  <rect x="540" y="455" width="210" height="80" rx="8" fill="url(#lambdaGrad)" filter="url(#shadow)"/>
+  <text x="645" y="480" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">AgentCoreFunction</text>
+  <text x="645" y="497" text-anchor="middle" fill="#DDD6FE" font-size="10">AI 추천 엔진</text>
+  <text x="645" y="511" text-anchor="middle" fill="#DDD6FE" font-size="10">Bedrock Agent 호출</text>
+  <text x="645" y="525" text-anchor="middle" fill="#C4B5FD" font-size="9">POST /recommendations (120s)</text>
+
+  <!-- SavedPlans Lambda -->
+  <rect x="770" y="455" width="210" height="80" rx="8" fill="url(#lambdaGrad)" filter="url(#shadow)"/>
+  <text x="875" y="480" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">SavedPlansFunction</text>
+  <text x="875" y="497" text-anchor="middle" fill="#DDD6FE" font-size="10">일정 저장 · 삭제</text>
+  <text x="875" y="511" text-anchor="middle" fill="#DDD6FE" font-size="10">좋아요 반응</text>
+  <text x="875" y="525" text-anchor="middle" fill="#C4B5FD" font-size="9">CRUD /me/itineraries</text>
+
+  <!-- SmallCities Lambda -->
+  <rect x="1000" y="455" width="210" height="80" rx="8" fill="url(#lambdaGrad)" filter="url(#shadow)"/>
+  <text x="1105" y="480" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">SmallCitiesFunction</text>
+  <text x="1105" y="497" text-anchor="middle" fill="#DDD6FE" font-size="10">소도시 · 지도</text>
+  <text x="1105" y="511" text-anchor="middle" fill="#DDD6FE" font-size="10">관광 콘텐츠</text>
+  <text x="1105" y="525" text-anchor="middle" fill="#C4B5FD" font-size="9">GET /small-cities, /map/*</text>
+
+  <!-- Arrows: API GW → Lambdas -->
+  <line x1="260" y1="375" x2="185" y2="450" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="310" y1="375" x2="415" y2="450" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="370" y1="375" x2="645" y2="450" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="430" y1="375" x2="875" y2="450" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="460" y1="375" x2="1105" y2="450" stroke="#94A3B8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===================== LAYER 5: DATA ===================== -->
+
+  <!-- VPC Boundary -->
+  <rect x="50" y="580" width="690" height="270" rx="10" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/>
+  <text x="70" y="600" fill="#64748B" font-size="10" font-weight="600">🔒 VPC: 10.40.0.0/16 (Private Subnets Only)</text>
+
+  <!-- RDS MySQL -->
+  <rect x="80" y="615" width="280" height="100" rx="8" fill="url(#rdsGrad)" filter="url(#shadow)"/>
+  <text x="220" y="642" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">🗄️ RDS MySQL 8.0</text>
+  <text x="220" y="660" text-anchor="middle" fill="#FEE2E2" font-size="10">db.t4g.micro · lovvdev</text>
+  <text x="220" y="678" text-anchor="middle" fill="#FECACA" font-size="9">users · social_accounts · user_preferences</text>
+  <text x="220" y="693" text-anchor="middle" fill="#FECACA" font-size="9">itineraries · itinerary_items · plan_reactions</text>
+
+  <!-- DynamoDB Sessions -->
+  <rect x="80" y="730" width="280" height="55" rx="8" fill="url(#ddbGrad)" filter="url(#shadow)"/>
+  <text x="220" y="755" text-anchor="middle" fill="#422006" font-size="13" font-weight="700">⚡ DynamoDB</text>
+  <text x="220" y="773" text-anchor="middle" fill="#713F12" font-size="10">auth_sessions (TTL · GSI1)</text>
+
+  <!-- Secrets Manager -->
+  <rect x="400" y="615" width="310" height="55" rx="8" fill="url(#secGrad)" filter="url(#shadow)"/>
+  <text x="555" y="638" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">🔐 Secrets Manager</text>
+  <text x="555" y="655" text-anchor="middle" fill="#D1D5DB" font-size="10">JWT Signing Secret · RDS Credentials</text>
+
+  <!-- VPC Endpoints -->
+  <rect x="400" y="688" width="140" height="40" rx="6" fill="#334155" stroke="#475569" stroke-width="1"/>
+  <text x="470" y="710" text-anchor="middle" fill="#94A3B8" font-size="10">VPC EP: SM</text>
+  <text x="470" y="722" text-anchor="middle" fill="#64748B" font-size="8">Interface</text>
+
+  <rect x="555" y="688" width="140" height="40" rx="6" fill="#334155" stroke="#475569" stroke-width="1"/>
+  <text x="625" y="710" text-anchor="middle" fill="#94A3B8" font-size="10">VPC EP: DDB</text>
+  <text x="625" y="722" text-anchor="middle" fill="#64748B" font-size="8">Gateway</text>
+
+  <rect x="400" y="740" width="140" height="40" rx="6" fill="#334155" stroke="#475569" stroke-width="1"/>
+  <text x="470" y="762" text-anchor="middle" fill="#94A3B8" font-size="10">VPC EP: S3</text>
+  <text x="470" y="774" text-anchor="middle" fill="#64748B" font-size="8">Gateway</text>
+
+  <!-- SSM Parameter Store -->
+  <rect x="555" y="740" width="155" height="40" rx="6" fill="#334155" stroke="#475569" stroke-width="1"/>
+  <text x="633" y="762" text-anchor="middle" fill="#94A3B8" font-size="10">SSM Params</text>
+  <text x="633" y="774" text-anchor="middle" fill="#64748B" font-size="8">Cross-Stack Config</text>
+
+  <!-- S3 Data (outside VPC) -->
+  <rect x="780" y="615" width="260" height="70" rx="8" fill="url(#s3Grad)" filter="url(#shadow)"/>
+  <text x="910" y="642" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">📦 S3 Bucket</text>
+  <text x="910" y="660" text-anchor="middle" fill="#FEF3C7" font-size="10">City Detail JSON</text>
+  <text x="910" y="675" text-anchor="middle" fill="#FDE68A" font-size="9">raw/KR/details/20260609/</text>
+
+  <!-- S3 Image -->
+  <rect x="780" y="700" width="260" height="60" rx="8" fill="url(#s3Grad)" filter="url(#shadowSm)" opacity="0.9"/>
+  <text x="910" y="725" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">🖼️ S3 Image Bucket</text>
+  <text x="910" y="742" text-anchor="middle" fill="#FEF3C7" font-size="10">avatar/ · content/ · tmp/</text>
+
+  <!-- Bedrock AI -->
+  <rect x="780" y="780" width="260" height="60" rx="8" fill="url(#aiGrad)" filter="url(#shadow)"/>
+  <text x="910" y="805" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">🤖 Amazon Bedrock</text>
+  <text x="910" y="822" text-anchor="middle" fill="#CFFAFE" font-size="10">AgentCore Runtime (us-east-1)</text>
+
+  <!-- DynamoDB Tables Group (outside VPC) -->
+  <rect x="1080" y="580" width="280" height="270" rx="10" fill="none" stroke="#FACC15" stroke-width="1" stroke-dasharray="4,3" opacity="0.3"/>
+  <text x="1100" y="600" fill="#FACC15" font-size="10" font-weight="600" opacity="0.7">DynamoDB Tables</text>
+
+  <rect x="1095" y="612" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="632" text-anchor="middle" fill="#FACC15" font-size="10">user_event_logs (3 GSI)</text>
+
+  <rect x="1095" y="648" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="668" text-anchor="middle" fill="#FACC15" font-size="10">agent_runs (3 GSI)</text>
+
+  <rect x="1095" y="684" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="704" text-anchor="middle" fill="#FACC15" font-size="10">festival_verify_cache</text>
+
+  <rect x="1095" y="720" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="740" text-anchor="middle" fill="#FACC15" font-size="10">async_jobs</text>
+
+  <rect x="1095" y="756" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="776" text-anchor="middle" fill="#FACC15" font-size="10">api_logs (1 GSI)</text>
+
+  <rect x="1095" y="792" width="250" height="30" rx="5" fill="#422006" opacity="0.6"/>
+  <text x="1220" y="812" text-anchor="middle" fill="#FACC15" font-size="10">content_documents · visitor_statistics</text>
+
+  <!-- ===================== DATA FLOW ARROWS ===================== -->
+
+  <!-- Auth → RDS -->
+  <line x1="185" y1="535" x2="185" y2="610" stroke="#EF4444" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
+  <!-- Auth → DDB Sessions -->
+  <line x1="140" y1="535" x2="140" y2="725" stroke="#FACC15" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
+  <!-- Auth → Secrets -->
+  <path d="M 250 535 Q 380 580 500 610" fill="none" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrow)" opacity="0.5" stroke-dasharray="4,2"/>
+
+  <!-- Pref → RDS -->
+  <line x1="415" y1="535" x2="310" y2="610" stroke="#EF4444" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- AgentCore → Bedrock -->
+  <path d="M 645 535 Q 720 700 780 810" fill="none" stroke="#06B6D4" stroke-width="2" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- SavedPlans → RDS -->
+  <path d="M 830 535 Q 500 580 310 610" fill="none" stroke="#EF4444" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.5"/>
+
+  <!-- SmallCities → S3 -->
+  <line x1="1105" y1="535" x2="960" y2="610" stroke="#D97706" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
+
+  <!-- CDN Image → S3 Image -->
+  <path d="M 940 251 Q 940 470 940 695" fill="none" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.5" stroke-dasharray="5,3"/>
+  <text x="952" y="475" fill="#F59E0B" font-size="9" opacity="0.7">OAC</text>
+
+  <!-- ===================== CLOUDWATCH LOGS ===================== -->
+  <rect x="100" y="870" width="1200" height="50" rx="8" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <text x="700" y="893" text-anchor="middle" fill="#64748B" font-size="12" font-weight="600">📊 CloudWatch Logs (7-day retention)</text>
+  <text x="700" y="910" text-anchor="middle" fill="#475569" font-size="10">/aws/lambda/AuthFunction · /aws/lambda/PreferenceFunction · /aws/lambda/AgentCoreFunction · /aws/lambda/SavedPlansFunction · /aws/lambda/SmallCitiesFunction</text>
+
+  <!-- ===================== DEPLOYMENT INFO ===================== -->
+  <rect x="100" y="940" width="580" height="55" rx="8" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <text x="120" y="960" fill="#64748B" font-size="11" font-weight="600">📦 CloudFormation Stacks</text>
+  <text x="120" y="978" fill="#475569" font-size="10">lovv-dev-data (Data Stack: VPC, RDS, DynamoDB, S3, SSM)</text>
+  <text x="120" y="992" fill="#475569" font-size="10">lovv-dev-api  (API Stack: API GW, Lambda, Authorizer, Cognito PoC, Log Groups)</text>
+
+  <rect x="720" y="940" width="580" height="55" rx="8" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="960" fill="#64748B" font-size="11" font-weight="600">🏷️ Resource Tags</text>
+  <text x="740" y="978" fill="#475569" font-size="10">Project: Lovv · Environment: dev · ManagedBy: CloudFormation</text>
+  <text x="740" y="992" fill="#475569" font-size="10">GithubRepo: github.com/Joraemon-s-Secret-Gadgets/Lovv_BE</text>
+
+  <!-- ===================== LEGEND ===================== -->
+  <rect x="100" y="1015" width="1200" height="55" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+  <text x="120" y="1035" fill="#94A3B8" font-size="10" font-weight="600">LEGEND:</text>
+
+  <rect x="200" y="1025" width="14" height="14" rx="3" fill="#10B981"/>
+  <text x="220" y="1037" fill="#94A3B8" font-size="10">Client</text>
+
+  <rect x="280" y="1025" width="14" height="14" rx="3" fill="#F59E0B"/>
+  <text x="300" y="1037" fill="#94A3B8" font-size="10">CDN</text>
+
+  <rect x="340" y="1025" width="14" height="14" rx="3" fill="#3B82F6"/>
+  <text x="360" y="1037" fill="#94A3B8" font-size="10">API Gateway</text>
+
+  <rect x="450" y="1025" width="14" height="14" rx="3" fill="#8B5CF6"/>
+  <text x="470" y="1037" fill="#94A3B8" font-size="10">Lambda</text>
+
+  <rect x="530" y="1025" width="14" height="14" rx="3" fill="#EF4444"/>
+  <text x="550" y="1037" fill="#94A3B8" font-size="10">RDS MySQL</text>
+
+  <rect x="640" y="1025" width="14" height="14" rx="3" fill="#FACC15"/>
+  <text x="660" y="1037" fill="#94A3B8" font-size="10">DynamoDB</text>
+
+  <rect x="740" y="1025" width="14" height="14" rx="3" fill="#D97706"/>
+  <text x="760" y="1037" fill="#94A3B8" font-size="10">S3</text>
+
+  <rect x="790" y="1025" width="14" height="14" rx="3" fill="#06B6D4"/>
+  <text x="810" y="1037" fill="#94A3B8" font-size="10">Bedrock AI</text>
+
+  <rect x="900" y="1025" width="14" height="14" rx="3" fill="#6B7280"/>
+  <text x="920" y="1037" fill="#94A3B8" font-size="10">Security</text>
+
+  <line x1="990" y1="1032" x2="1030" y2="1032" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="1040" y="1037" fill="#94A3B8" font-size="10">Data Flow</text>
+
+  <line x1="1110" y1="1032" x2="1150" y2="1032" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="1160" y="1037" fill="#94A3B8" font-size="10">Auth / Config</text>
+
+  <text x="700" y="1060" text-anchor="middle" fill="#475569" font-size="9">© 2026 Lovv · Joraemon's Secret Gadgets</text>
+</svg>

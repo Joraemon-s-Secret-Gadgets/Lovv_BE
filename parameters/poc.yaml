@@ -1,15 +1,19 @@
+- ParameterKey: EnvName
+  ParameterValue: "poc"
+- ParameterKey: LogRetentionInDays
+  ParameterValue: "7"
 - ParameterKey: AllowedCorsOrigin
-  ParameterValue: "http://127.0.0.1:5173,http://localhost:5173,https://d3nuef0zacpyj.cloudfront.net,https://dkyiemfaw3g04.cloudfront.net,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app"
+  ParameterValue: "http://127.0.0.1:5173,http://localhost:5173,https://poc.lovv.me"
 - ParameterKey: MapCityS3Bucket
   ParameterValue: "lovv-data-pipeline-dev-925273580929"
 - ParameterKey: MapCityS3Prefix
   ParameterValue: "raw/KR/details/20260609/"
 - ParameterKey: ImageCdnBaseUrl
-  ParameterValue: "{{resolve:ssm:/lovv/dev/cloudfront/image_base_url}}"
+  ParameterValue: "{{resolve:ssm:/lovv/poc/cloudfront/image_base_url}}"
 - ParameterKey: AgentCoreRuntimeArn
-  ParameterValue: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM"
+  ParameterValue: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/lovv-poc-agentcore-replace-me"
 - ParameterKey: AuthTokenSigningSecretArn
-  ParameterValue: "arn:aws:secretsmanager:us-east-1:925273580929:secret:lovv/dev/jwt-signing-secret-LufcUG"
+  ParameterValue: "arn:aws:secretsmanager:us-east-1:925273580929:secret:lovv/poc/jwt-signing-secret-replace-me"
 - ParameterKey: AuthTokenTtlSeconds
   ParameterValue: "900"
 - ParameterKey: AuthRefreshTtlSeconds
@@ -29,11 +33,11 @@
 - ParameterKey: AuthRefreshCookiePath
   ParameterValue: "/"
 - ParameterKey: GoogleClientId
-  ParameterValue: "337263925212-pqoj53s7rhd7cbp5hk91vbcq3qrvavkg.apps.googleusercontent.com"
+  ParameterValue: "replace-with-google-client-id"
 - ParameterKey: GoogleClientSecret
   UsePreviousValue: true
 - ParameterKey: KakaoClientId
-  ParameterValue: "dc4f207854aa616db4b19febdebda41e"
+  ParameterValue: "replace-with-kakao-client-id"
 - ParameterKey: KakaoClientSecret
   UsePreviousValue: true
 - ParameterKey: EnableCognitoPoC
@@ -43,21 +47,21 @@
 - ParameterKey: CognitoJwtAudience
   ParameterValue: "replace-with-cognito-app-client-id"
 - ParameterKey: CognitoUserPoolName
-  ParameterValue: "lovv-dev-auth-users"
+  ParameterValue: "lovv-poc-auth-users"
 - ParameterKey: CognitoUserPoolClientName
-  ParameterValue: "lovv-web-dev"
+  ParameterValue: "lovv-web-poc"
 - ParameterKey: CognitoHostedUiDomainPrefix
-  ParameterValue: "lovv-dev-auth-925273580929"
+  ParameterValue: "lovv-poc-auth-925273580929"
 - ParameterKey: CognitoCallbackUrls
-  ParameterValue: "http://127.0.0.1:5173/auth/callback/cognito,http://localhost:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito,https://dkyiemfaw3g04.cloudfront.net/auth/callback/cognito,https://lovv-admin-web.vercel.app/auth/callback/cognito,https://lovv-admin-web-skn26.vercel.app/auth/callback/cognito,https://lovv-admin-web-eta.vercel.app/auth/callback/cognito"
+  ParameterValue: "http://127.0.0.1:5173/auth/callback/cognito,http://localhost:5173/auth/callback/cognito,https://poc.lovv.me/auth/callback/cognito"
 - ParameterKey: CognitoLogoutUrls
-  ParameterValue: "http://127.0.0.1:5173/,http://localhost:5173/,https://d3nuef0zacpyj.cloudfront.net/,https://dkyiemfaw3g04.cloudfront.net/,https://lovv-admin-web.vercel.app/,https://lovv-admin-web-skn26.vercel.app/,https://lovv-admin-web-eta.vercel.app/"
+  ParameterValue: "http://127.0.0.1:5173/,http://localhost:5173/,https://poc.lovv.me/"
 - ParameterKey: CognitoGoogleClientId
-  ParameterValue: "337263925212-pqoj53s7rhd7cbp5hk91vbcq3qrvavkg.apps.googleusercontent.com"
+  ParameterValue: "replace-with-google-client-id"
 - ParameterKey: CognitoGoogleClientSecret
   UsePreviousValue: true
 - ParameterKey: CognitoKakaoClientId
-  ParameterValue: "dc4f207854aa616db4b19febdebda41e"
+  ParameterValue: "replace-with-kakao-client-id"
 - ParameterKey: CognitoKakaoClientSecret
   UsePreviousValue: true
 - ParameterKey: CognitoKakaoOidcIssuer
@@ -65,19 +69,19 @@
 - ParameterKey: CognitoKakaoAuthorizeScopes
   ParameterValue: "openid profile_nickname profile_image"
 - ParameterKey: RdsHost
-  ParameterValue: "lovv-dev-mysql.ci18eue8oz99.us-east-1.rds.amazonaws.com"
+  ParameterValue: "lovv-poc-mysql.replace-me.us-east-1.rds.amazonaws.com"
 - ParameterKey: RdsSecretArn
   UsePreviousValue: true
 - ParameterKey: RdsDatabaseName
-  ParameterValue: "lovvdev"
+  ParameterValue: "lovvpoc"
 - ParameterKey: VpcId
-  ParameterValue: "vpc-0ccb7e4be7b11b9fb"
+  ParameterValue: "vpc-replace-me"
 - ParameterKey: PrivateSubnetA
-  ParameterValue: "subnet-0e04f80cfb58e0f35"
+  ParameterValue: "subnet-replace-me-a"
 - ParameterKey: PrivateSubnetC
-  ParameterValue: "subnet-0b3d1d99edd282504"
+  ParameterValue: "subnet-replace-me-c"
 - ParameterKey: AuthSessionsTableName
-  ParameterValue: "lovv_dev_auth_sessions"
+  ParameterValue: "lovv_poc_auth_sessions"
 - ParameterKey: UsersTableName
   ParameterValue: "users"
 - ParameterKey: SocialAccountsTableName

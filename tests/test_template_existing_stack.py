@@ -203,6 +203,22 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         index = self.template.index("SmallCitiesFunction:")
         self.assertIn("Timeout: 30", self.template[index : index + 260])
 
+    def test_small_cities_image_cdn_base_url_is_environment_parameter(self):
+        self.assertIn("ImageCdnBaseUrl:", self.template)
+        index = self.template.index("SmallCitiesFunction:")
+        block = self.template[index : index + 520]
+
+        self.assertIn("IMAGE_CDN_BASE_URL: !Ref ImageCdnBaseUrl", block)
+        self.assertNotIn("IMAGE_CDN_BASE_URL: '{{resolve:ssm:/lovv/dev/cloudfront/image_base_url}}'", block)
+
+    def test_agentcore_runtime_arn_is_environment_parameter(self):
+        self.assertIn("AgentCoreRuntimeArn:", self.template)
+        index = self.template.index("AgentCoreFunction:")
+        block = self.template[index : index + 900]
+
+        self.assertIn("BEDROCK_AGENT_ARN: !Ref AgentCoreRuntimeArn", block)
+        self.assertIn('Resource: !Sub "${AgentCoreRuntimeArn}*"', block)
+
 
 class ExistingDataStackSchemaTest(unittest.TestCase):
     def test_user_preferences_country_track_schema_is_not_changed_by_api_policy(self):

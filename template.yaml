@@ -5,7 +5,7 @@ Description: Lovv backend API for social auth, preferences, map/city, mock recom
 Parameters:
   AllowedCorsOrigin:
     Type: String
-    Default: http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app
+    Default: http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net,https://dkyiemfaw3g04.cloudfront.net,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app
     Description: Comma-separated browser origins allowed to send credentialed API requests.
   MapCityS3Bucket:
     Type: String
@@ -15,6 +15,14 @@ Parameters:
     Type: String
     Default: raw/KR/details/20260609/
     Description: S3 prefix for city-by-city raw detail JSON files.
+  ImageCdnBaseUrl:
+    Type: String
+    Default: '{{resolve:ssm:/lovv/dev/cloudfront/image_base_url}}'
+    Description: Public image CDN base URL for small-city image resolution. Override per environment.
+  AgentCoreRuntimeArn:
+    Type: String
+    Default: arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM
+    Description: Bedrock AgentCore runtime ARN used by the recommendation Lambda.
   AuthTokenSigningSecretArn:
     Type: String
     Description: Secrets Manager ARN for JWT signing secret.
@@ -243,14 +251,7 @@ Resources:
           - PATCH
           - DELETE
           - OPTIONS
-        AllowOrigins:
-          - http://127.0.0.1:5173
-          - http://localhost:5173
-          - https://d3nuef0zacpyj.cloudfront.net
-          - https://dkyiemfaw3g04.cloudfront.net
-          - https://lovv-admin-web.vercel.app
-          - https://lovv-admin-web-skn26.vercel.app
-          - https://lovv-admin-web-eta.vercel.app
+        AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]
       Auth:
         Authorizers:
           LovvTokenAuthorizer:
@@ -924,7 +925,7 @@ Resources:
       Description: AgentCore recommendation API - invokes Bedrock AgentCore runtime.
       Environment:
         Variables:
-          BEDROCK_AGENT_ARN: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM"
+          BEDROCK_AGENT_ARN: !Ref AgentCoreRuntimeArn
           CORS_ALLOW_ORIGIN: !Select [0, !Split [",", !Ref AllowedCorsOrigin]]
           CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin
       Policies:
@@ -932,7 +933,7 @@ Resources:
             - Effect: Allow
               Action:
                 - "bedrock-agentcore:InvokeAgentRuntime"
-              Resource: "arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/myagent_MyAgent-FNVZimELXM*"
+              Resource: !Sub "${AgentCoreRuntimeArn}*"
       FunctionUrlConfig:
         AuthType: NONE
       Events:
@@ -1029,6 +1030,7 @@ Resources:
         Variables:
           MAP_CITY_S3_BUCKET: !Ref MapCityS3Bucket
           MAP_CITY_S3_PREFIX: !Ref MapCityS3Prefix
+          IMAGE_CDN_BASE_URL: !Ref ImageCdnBaseUrl
       Policies:
         - Statement:
             - Effect: Allow

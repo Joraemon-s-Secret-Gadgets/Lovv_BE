@@ -152,6 +152,18 @@ class SavedPlansAppTest(unittest.TestCase):
         self.assertEqual(second_body["itinerary"], first_body["itinerary"])
         self.assertTrue(second_body["duplicate"])
 
+    def test_same_active_idempotency_key_with_different_payload_returns_conflict(self):
+        first = handle_request(make_event("POST", "/api/v1/me/itineraries", save_payload()), repository=self.repository)
+        conflict = handle_request(
+            make_event("POST", "/api/v1/me/itineraries", save_payload(title="다른 일정 제목")),
+            repository=self.repository,
+        )
+        body = json.loads(conflict["body"])
+
+        self.assertEqual(first["statusCode"], 201)
+        self.assertEqual(conflict["statusCode"], 409)
+        self.assertEqual(body["error"]["code"], "IDEMPOTENCY_KEY_CONFLICT")
+
     def test_rejects_raw_chat_history_fields(self):
         response = handle_request(
             make_event("POST", "/api/v1/me/itineraries", save_payload(messages=[{"role": "user"}])),

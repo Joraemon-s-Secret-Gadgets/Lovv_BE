@@ -1,6 +1,7 @@
 import json
 import os
 
+from small_cities.image_resolver import load_image_map, resolve_image_url
 from small_cities.mapper import build_city_api_record, is_usable_image_url, read_number
 
 
@@ -34,17 +35,24 @@ class CityDataInvalidError(CityDataRepositoryError):
 
 
 class S3RawCityRepository:
-    def __init__(self, bucket, prefix, s3_client=None):
+    def __init__(self, bucket, prefix, s3_client=None, cdn_base=None, image_map=None):
         self.bucket = bucket
         self.prefix = _normalize_prefix(prefix)
         self.s3 = s3_client or _s3_client()
         self._city_records = None
+        self.cdn_base = cdn_base or ""
+        # image_map: load_image_map()["images"] dict, or empty dict
+        self.image_map = image_map if isinstance(image_map, dict) else {}
 
     @classmethod
     def from_env(cls):
+        cdn_base = os.environ.get("IMAGE_CDN_BASE_URL", "").strip().rstrip("/")
+        image_data = load_image_map()
         return cls(
             bucket=os.environ.get("MAP_CITY_S3_BUCKET", DEFAULT_BUCKET),
             prefix=os.environ.get("MAP_CITY_S3_PREFIX", DEFAULT_PREFIX),
+            cdn_base=cdn_base,
+            image_map=image_data.get("images", {}),
         )
 
     def list_city_records(self):
@@ -82,15 +90,22 @@ class S3RawCityRepository:
         try:
             city_record = _city_record_from_document(document)
             records = _items_from_document(document)
-            attractions = [_place_from_item(item, "attraction") for item in records if item.get("entity_type") == "attraction"]
-            festivals = [_place_from_item(item, "festival") for item in records if item.get("entity_type") == "festival"]
+            resolved_city_id = document.get("city_id") or city_record.get("city_id") or city_id
+            attractions = [
+                _place_from_item(item, "attraction", resolved_city_id, self.cdn_base, self.image_map)
+                for item in records if item.get("entity_type") == "attraction"
+            ]
+            festivals = [
+                _place_from_item(item, "festival", resolved_city_id, self.cdn_base, self.image_map)
+                for item in records if item.get("entity_type") == "festival"
+            ]
             attractions = [place for place in attractions if place is not None]
             festivals = [place for place in festivals if place is not None]
         except (AttributeError, TypeError, ValueError) as error:
             raise CityDataInvalidError() from error
 
         return {
-            "cityId": document.get("city_id") or city_record.get("city_id") or city_id,
+            "cityId": resolved_city_id,
             "cityName": _display_city_name(city_record),
             "summary": _summary(city_record, records),
             "attractions": attractions,
@@ -238,21 +253,29 @@ def _visitor_statistics_count(value):
     return 0
 
 
-def _place_from_item(item, place_type):
+def _place_from_item(item, place_type, city_id="", cdn_base="", image_map=None):
     title = item.get("title")
     if not isinstance(title, str) or not title.strip():
         return None
 
-    image_url = item.get("image_url")
+    title = title.strip()
+
+    # 1순위: S3 이미지 매핑에서 CloudFront URL 조회
+    s3_image_url = resolve_image_url(city_id, title, cdn_base, image_map or {})
+
+    # 2순위: 기존 관광공사 firstimage URL (유효한 경우)
+    fallback_url = item.get("image_url")
+    resolved_image_url = s3_image_url or (fallback_url.strip() if is_usable_image_url(fallback_url) else None)
+
     return {
         "placeId": item.get("entity_id") or f"{place_type.upper()}-{item.get('content_id', '')}",
         "type": place_type,
         "contentId": item.get("content_id"),
-        "title": title.strip(),
+        "title": title,
         "description": _short_text(item.get("description")),
         "address": item.get("address"),
         "phone": item.get("phone"),
-        "imageUrl": image_url.strip() if is_usable_image_url(image_url) else None,
+        "imageUrl": resolved_image_url,
         "latitude": read_number(item.get("latitude")),
         "longitude": read_number(item.get("longitude")),
         "theme": item.get("theme"),
