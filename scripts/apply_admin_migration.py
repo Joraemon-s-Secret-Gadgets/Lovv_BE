@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Dev-only: apply schema/aurora_mysql/002_admin_console_tables.sql to the target DB.
+"""Dev-only: apply a schema/aurora_mysql/*.sql migration to the target DB.
+
+    python scripts/apply_admin_migration.py            # default: 002 admin console
+    python scripts/apply_admin_migration.py 003        # prefix match -> 003_*.sql
+    python scripts/apply_admin_migration.py 003_admin_operations_tables.sql
 
 Run while an SSM port-forward to dev RDS is open (e.g. 127.0.0.1:13306).
 Credentials resolve the same way as check_admin_migration.py:
@@ -21,7 +25,19 @@ try:
 except ImportError:
     sys.exit("pymysql is not installed. Run: pip install pymysql")
 
-MIGRATION = Path(__file__).resolve().parents[1] / "schema" / "aurora_mysql" / "002_admin_console_tables.sql"
+def _resolve_migration():
+    schema_dir = Path(__file__).resolve().parents[1] / "schema" / "aurora_mysql"
+    arg = sys.argv[1] if len(sys.argv) > 1 else "002_admin_console_tables.sql"
+    candidate = schema_dir / arg
+    if candidate.exists():
+        return candidate
+    matches = sorted(schema_dir.glob(f"{arg}*.sql"))
+    if matches:
+        return matches[0]
+    sys.exit(f"Migration file not found: {arg} (looked in {schema_dir})")
+
+
+MIGRATION = _resolve_migration()
 
 
 def resolve_credentials():
@@ -75,4 +91,4 @@ try:
 finally:
     conn.close()
 
-print("\nMigration applied. Re-run check_admin_migration.py to confirm 9/9.")
+print(f"\nMigration applied: {MIGRATION.name}. Verify tables with scripts/db_inspect.py.")
