@@ -16,27 +16,43 @@ class DataStackVpcEndpointsTest(unittest.TestCase):
         end = self.template.index(f"  {next_resource_name}:")
         return self.template[start:end]
 
-    # --- Task 5.1: SSM Endpoint Tests ---
+    def _subnet_refs(self, resource_name: str, next_resource_name: str) -> list[str]:
+        block = self._block(resource_name, next_resource_name)
+        subnet_section_start = block.index("SubnetIds:")
+        subnet_section_end = block.index("SecurityGroupIds:", subnet_section_start)
+        subnet_section = block[subnet_section_start:subnet_section_end]
 
-    def test_ssm_endpoint_single_az(self):
-        """SSMVpcEndpoint SubnetIds에 LovvPrivateSubnetA만 포함되어 있음을 검증한다."""
-        ssm_block = self._block("SSMVpcEndpoint", "DynamoDBGatewayEndpoint")
-
-        self.assertIn("SubnetIds:", ssm_block)
-        self.assertIn("- !Ref LovvPrivateSubnetA", ssm_block)
-
-        # SubnetIds 섹션에서 항목이 1개만 있는지 확인
-        subnet_section_start = ssm_block.index("SubnetIds:")
-        # SecurityGroupIds가 SubnetIds 다음 섹션이므로 그 사이를 추출
-        subnet_section_end = ssm_block.index("SecurityGroupIds:", subnet_section_start)
-        subnet_section = ssm_block[subnet_section_start:subnet_section_end]
-
-        subnet_refs = [
+        return [
             line.strip()
             for line in subnet_section.splitlines()
             if line.strip().startswith("- !Ref")
         ]
-        self.assertEqual(len(subnet_refs), 1, f"Expected 1 subnet, got {len(subnet_refs)}: {subnet_refs}")
+
+    def test_data_stack_resource_logical_ids_are_unique(self):
+        resources_start = self.template.index("Resources:")
+        outputs_start = self.template.index("Outputs:")
+        resources_section = self.template[resources_start:outputs_start]
+
+        logical_ids = [
+            line.strip()[:-1]
+            for line in resources_section.splitlines()
+            if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":")
+        ]
+        duplicates = sorted(
+            logical_id
+            for logical_id in set(logical_ids)
+            if logical_ids.count(logical_id) > 1
+        )
+
+        self.assertEqual([], duplicates)
+
+    # --- Task 5.1: SSM Endpoint Tests ---
+
+    def test_ssm_endpoint_single_az(self):
+        """SSMVpcEndpoint SubnetIds에 LovvPrivateSubnetA만 포함되어 있음을 검증한다."""
+        subnet_refs = self._subnet_refs("SSMVpcEndpoint", "DynamoDBGatewayEndpoint")
+
+        self.assertEqual(["- !Ref LovvPrivateSubnetA"], subnet_refs)
 
     def test_ssm_endpoint_private_dns_enabled(self):
         """SSMVpcEndpoint의 PrivateDnsEnabled가 true임을 검증한다."""
@@ -56,22 +72,9 @@ class DataStackVpcEndpointsTest(unittest.TestCase):
 
     def test_secretsmanager_endpoint_single_az(self):
         """SecretsManagerVpcEndpoint SubnetIds에 PrivateSubnetA만 포함되어 있음을 검증한다."""
-        sm_block = self._block("SecretsManagerVpcEndpoint", "SSMVpcEndpoint")
+        subnet_refs = self._subnet_refs("SecretsManagerVpcEndpoint", "SSMVpcEndpoint")
 
-        self.assertIn("SubnetIds:", sm_block)
-        self.assertIn("- !Ref LovvPrivateSubnetA", sm_block)
-
-        # SubnetIds 섹션에서 항목이 1개만 있는지 확인
-        subnet_section_start = sm_block.index("SubnetIds:")
-        subnet_section_end = sm_block.index("SecurityGroupIds:", subnet_section_start)
-        subnet_section = sm_block[subnet_section_start:subnet_section_end]
-
-        subnet_refs = [
-            line.strip()
-            for line in subnet_section.splitlines()
-            if line.strip().startswith("- !Ref")
-        ]
-        self.assertEqual(len(subnet_refs), 1, f"Expected 1 subnet, got {len(subnet_refs)}: {subnet_refs}")
+        self.assertEqual(["- !Ref LovvPrivateSubnetA"], subnet_refs)
 
     def test_gateway_endpoints_unchanged(self):
         """DynamoDB/S3 Gateway Endpoint의 VpcId, ServiceName, VpcEndpointType, RouteTableIds 속성 무변경을 검증한다."""

@@ -359,25 +359,10 @@ Resources:
       PrivateDnsEnabled: true
       SubnetIds:
         - !Ref LovvPrivateSubnetA
-        - !Ref LovvPrivateSubnetC
       SecurityGroupIds:
         - !Ref LovvEndpointSecurityGroup
 
   # SSM VPC Endpoint: VPC 내부 Lambda가 Parameter Store 값을 private 경로로 조회한다.
-  SSMVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref LovvDevVPC
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref LovvPrivateSubnetA
-        - !Ref LovvPrivateSubnetC
-      SecurityGroupIds:
-        - !Ref LovvEndpointSecurityGroup
-
-  # SSM Parameter Store VPC Endpoint: 현재 Lambda 런타임에서 미사용이나 향후 활용 가능성을 고려하여 단일 AZ로 유지한다.
   SSMVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
