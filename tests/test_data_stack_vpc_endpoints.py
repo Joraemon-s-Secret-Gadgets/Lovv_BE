@@ -4,17 +4,24 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_STACK_TEMPLATE = PROJECT_ROOT / "infra" / "data-stack" / "template.yaml"
+SAM_TEMPLATE = PROJECT_ROOT / "template.yaml"
 
 
 class DataStackVpcEndpointsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = DATA_STACK_TEMPLATE.read_text(encoding="utf-8")
+        cls.sam_template = SAM_TEMPLATE.read_text(encoding="utf-8")
 
     def _block(self, resource_name: str, next_resource_name: str) -> str:
         start = self.template.index(f"  {resource_name}:")
         end = self.template.index(f"  {next_resource_name}:")
         return self.template[start:end]
+
+    def _sam_block(self, resource_name: str, next_resource_name: str) -> str:
+        start = self.sam_template.index(f"  {resource_name}:")
+        end = self.sam_template.index(f"  {next_resource_name}:")
+        return self.sam_template[start:end]
 
     def _subnet_refs(self, resource_name: str, next_resource_name: str) -> list[str]:
         block = self._block(resource_name, next_resource_name)
@@ -159,6 +166,25 @@ class DataStackVpcEndpointsTest(unittest.TestCase):
             "LovvPrivateSubnetCRouteTableAssociation", "LovvRDSSecurityGroup"
         )
         self.assertNotIn("GatewayId: !Ref LovvInternetGateway", private_assoc_c_block)
+
+    def test_lambda_subnet_alignment(self):
+        private_subnet_parameter = self._block("PrivateSubnetAParameter", "PrivateSubnetCParameter")
+        self.assertIn("Name: !Sub /lovv/${EnvName}/network/private_subnet_a", private_subnet_parameter)
+        self.assertIn("Value: !Ref LovvPrivateSubnetA", private_subnet_parameter)
+
+        for resource_name, next_resource_name in (
+            ("AuthFunction", "AuthAuthorizerFunction"),
+            ("AdminFunction", "PreferenceFunction"),
+            ("PreferenceFunction", "AgentCoreFunction"),
+            ("SavedPlansFunction", "SmallCitiesFunction"),
+        ):
+            lambda_block = self._sam_block(resource_name, next_resource_name)
+            self.assertIn("VpcConfig:", lambda_block)
+            self.assertIn("SecurityGroupIds:", lambda_block)
+            self.assertIn("- !Ref AppFunctionSecurityGroup", lambda_block)
+            self.assertIn("SubnetIds:", lambda_block)
+            self.assertIn("- !Ref PrivateSubnetA", lambda_block)
+            self.assertNotIn("- !Ref PrivateSubnetC", lambda_block)
 
 
 if __name__ == "__main__":

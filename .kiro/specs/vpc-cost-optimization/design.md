@@ -5,16 +5,16 @@
 `lovv-dev-data-stack` CloudFormation 스택의 VPC Interface Endpoint 비용을 최적화한다. SSM과 Secrets Manager Interface VPC Endpoint를 각각 단일 AZ(PrivateSubnetA, 1 ENI)로 축소하여 월 약 $14.6를 절감하며, Lambda 기능과 RDS 보안 격리를 유지한다.
 
 현재 상태:
-- `SecretsManagerVpcEndpoint`: 템플릿에 정의됨, SubnetIds에 PrivateSubnetA 1개만 포함 (이미 단일 AZ)
-- `SSMVpcEndpoint`: 실제 AWS 환경에 배포되어 있으나 (`vpce-0acf51d81b0dfe1ec`), CloudFormation 템플릿에 리소스 정의가 누락된 상태
-- NAT 인스턴스: `EnableNatInstance=false`가 기본값이며 유휴 상태에서 비용 발생 가능
+- `SecretsManagerVpcEndpoint`: 템플릿과 배포 상태에 존재하며, 변경 전에는 PrivateSubnetA/C 2개 서브넷에 ENI를 배치했다.
+- `SSMVpcEndpoint`: 템플릿과 배포 상태에 존재하며, 변경 전에는 PrivateSubnetA/C 2개 서브넷에 ENI를 배치했다.
+- NAT 인스턴스: `EnableNatInstance=false` 적용 시 NAT EC2와 NAT 전용 SSM 파라미터가 삭제된다.
 
 설계 목표:
-1. `SSMVpcEndpoint` 리소스를 CloudFormation 템플릿에 단일 AZ로 정의하여 IaC 관리 하에 둔다
-2. `SecretsManagerVpcEndpoint`가 단일 AZ(PrivateSubnetA)를 유지함을 명시적으로 확인한다
+1. `SSMVpcEndpoint`의 `SubnetIds`에서 `LovvPrivateSubnetC`를 제거하여 PrivateSubnetA 단일 AZ로 축소한다
+2. `SecretsManagerVpcEndpoint`의 `SubnetIds`에서 `LovvPrivateSubnetC`를 제거하여 PrivateSubnetA 단일 AZ로 축소한다
 3. Gateway Endpoint(S3, DynamoDB)는 변경하지 않는다
 4. RDS 보안 격리를 유지한다
-5. NAT 인스턴스 운영 가이드를 README에 추가한다
+5. NAT 인스턴스 운영 가이드를 현재 배포 모델(`EnableNatInstance=true/false` 재배포)에 맞게 문서화한다
 
 ## Architecture
 
@@ -27,17 +27,21 @@ graph TB
             Lambda["VPC Lambda<br/>(Auth, Admin, SavedPlans, Preference)"]
             RDS_A["RDS (primary placement)"]
             SM_ENI_A["SecretsManager ENI"]
-            SSM_ENI_A["SSM ENI (deployed, not in template)"]
+            SSM_ENI_A["SSM ENI"]
         end
         subgraph PrivateSubnetC["PrivateSubnetC (10.40.20.0/24) - AZ-c"]
             RDS_C["RDS (subnet group member)"]
+            SM_ENI_C["SecretsManager ENI (unused, $7.3/mo)"]
             SSM_ENI_C["SSM ENI (unused, $7.3/mo)"]
         end
     end
     Lambda -->|"secretsmanager:GetSecretValue"| SM_ENI_A
-    Lambda -.->|"Not used at runtime"| SSM_ENI_A
+    Lambda -.->|"cross-AZ not required in dev"| SM_ENI_C
+    Lambda -.->|"Parameter Store private path"| SSM_ENI_A
     SM_ENI_A -->|"Private link"| SM_Service["Secrets Manager Service"]
-    SSM_ENI_A -.->|"Private link"| SSM_Service["SSM Parameter Store"]
+    SM_ENI_C -.->|"Private link"| SM_Service
+    SSM_ENI_A -->|"Private link"| SSM_Service["SSM Parameter Store"]
+    SSM_ENI_C -.->|"Private link"| SSM_Service
 ```
 
 ### 목표 아키텍처 (변경 후)
@@ -71,22 +75,35 @@ graph TB
 
 | 리소스 | 변경 전 | 변경 후 | 비용 영향 |
 |--------|---------|---------|-----------|
-| `SSMVpcEndpoint` | 2 AZ (템플릿 외 관리) | 1 AZ (PrivateSubnetA, 템플릿 관리) | -$7.3/월 |
-| `SecretsManagerVpcEndpoint` | 1 AZ (PrivateSubnetA) | 1 AZ (무변경 확인) | $0 |
+| `SSMVpcEndpoint` | 2 AZ (PrivateSubnetA/C) | 1 AZ (PrivateSubnetA) | -$7.3/월 |
+| `SecretsManagerVpcEndpoint` | 2 AZ (PrivateSubnetA/C) | 1 AZ (PrivateSubnetA) | -$7.3/월 |
 | `DynamoDBGatewayEndpoint` | Gateway (무료) | 무변경 | $0 |
 | `S3GatewayEndpoint` | Gateway (무료) | 무변경 | $0 |
-| NAT Instance | running (유휴) | 운영 가이드 추가 | -$3/월 (수동 중지 시) |
+| NAT Instance | enabled/running 가능 | `EnableNatInstance=false` 기본 및 필요 시 재배포 | -$3/월+ (비활성 시) |
 
-> 참고: 기존 보고서에서는 SSM과 SecretsManager 모두 2 AZ라고 기술했으나, 현재 템플릿의 `SecretsManagerVpcEndpoint`는 이미 `LovvPrivateSubnetA` 1개만 포함하고 있다. SSM 엔드포인트를 템플릿에 단일 AZ로 추가하여 IaC 정합성을 확보하고, 2번째 AZ ENI를 제거함으로써 ~$7.3/월을 절감한다.
+> 실제 diff 기준: `infra/data-stack/template.yaml`의 기존 `SecretsManagerVpcEndpoint`와 `SSMVpcEndpoint`에서 각각 `LovvPrivateSubnetC`를 제거했다. 신규 endpoint 추가나 CloudFormation import 작업은 이 변경의 범위가 아니다.
 
 ## Components and Interfaces
 
 ### 1. CloudFormation 템플릿 변경 (`infra/data-stack/template.yaml`)
 
-#### 1.1 SSMVpcEndpoint 리소스 추가
+#### 1.1 Interface Endpoint SubnetIds 축소
 
 ```yaml
-# SSM Parameter Store VPC Endpoint: 현재 Lambda 런타임에서 미사용이나 향후 활용 가능성을 고려하여 단일 AZ로 유지한다.
+# Secrets Manager VPC Endpoint: VPC 내부 Lambda가 RDS secret 값을 private 경로로 조회한다.
+SecretsManagerVpcEndpoint:
+  Type: AWS::EC2::VPCEndpoint
+  Properties:
+    VpcId: !Ref LovvDevVPC
+    ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+    VpcEndpointType: Interface
+    PrivateDnsEnabled: true
+    SubnetIds:
+      - !Ref LovvPrivateSubnetA
+    SecurityGroupIds:
+      - !Ref LovvEndpointSecurityGroup
+
+# SSM VPC Endpoint: VPC 내부 Lambda가 Parameter Store 값을 private 경로로 조회한다.
 SSMVpcEndpoint:
   Type: AWS::EC2::VPCEndpoint
   Properties:
@@ -100,37 +117,19 @@ SSMVpcEndpoint:
       - !Ref LovvEndpointSecurityGroup
 ```
 
-배치 위치: `SecretsManagerVpcEndpoint` 바로 뒤, `DynamoDBGatewayEndpoint` 앞에 배치한다.
+두 리소스는 모두 기존 logical ID를 유지한다. 변경은 `SubnetIds` 목록에서 `LovvPrivateSubnetC`를 제거하고 `LovvPrivateSubnetA`만 남기는 것으로 한정한다. `VpcId`, `ServiceName`, `VpcEndpointType`, `PrivateDnsEnabled`, `SecurityGroupIds`는 변경하지 않는다.
 
-#### 1.2 SecretsManagerVpcEndpoint 확인 (무변경)
+#### 1.2 Gateway Endpoint (무변경)
 
-현재 템플릿의 `SecretsManagerVpcEndpoint`는 이미 단일 AZ(`LovvPrivateSubnetA`)로 구성되어 있으므로 변경하지 않는다.
-
-```yaml
-# 현재 상태 (변경 없음)
-SecretsManagerVpcEndpoint:
-  Type: AWS::EC2::VPCEndpoint
-  Properties:
-    VpcId: !Ref LovvDevVPC
-    ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
-    VpcEndpointType: Interface
-    PrivateDnsEnabled: true
-    SubnetIds:
-      - !Ref LovvPrivateSubnetA
-    SecurityGroupIds:
-      - !Ref LovvEndpointSecurityGroup
-```
-
-#### 1.3 Gateway Endpoint (무변경)
-
-`DynamoDBGatewayEndpoint`와 `S3GatewayEndpoint`는 변경하지 않는다.
+`DynamoDBGatewayEndpoint`와 `S3GatewayEndpoint`는 무료 Gateway endpoint이므로 변경하지 않는다.
 
 ### 2. README 업데이트 (`infra/data-stack/README.md`)
 
-NAT 인스턴스 운영 가이드 섹션을 추가한다:
+NAT 인스턴스 운영 가이드를 현재 배포 상태에 맞게 수정한다:
 
-- NAT 인스턴스를 DB 작업 시에만 활성화/비활성화하는 절차
-- AWS CLI를 이용한 수동 중지/시작 명령어
+- `EnableNatInstance=false`이면 NAT EC2와 `/lovv/dev/network/nat_instance_id`가 존재하지 않음을 명시
+- DB 작업 전 `EnableNatInstance=true`로 Data Stack을 재배포하는 절차
+- 작업 완료 후 `EnableNatInstance=false`로 재배포해 NAT 리소스를 제거하는 절차
 - Lambda가 NAT 인스턴스에 의존하지 않음을 명시
 
 ### 3. 테스트 코드 (`tests/test_data_stack_vpc_endpoints.py`)
@@ -141,10 +140,11 @@ NAT 인스턴스 운영 가이드 섹션을 추가한다:
 - `SecretsManagerVpcEndpoint` SubnetIds에 PrivateSubnetA만 포함 검증
 - Gateway Endpoint 무변경 검증
 - RDS 보안 격리 유지 검증
+- SAM Lambda VpcConfig가 Data Stack endpoint와 동일한 PrivateSubnetA를 사용함을 검증
 
 ### 4. 기존 테스트 업데이트 (`tests/test_data_stack_nat_instance.py`)
 
-`test_existing_private_endpoint_and_rds_controls_remain` 테스트는 이미 `SSMVpcEndpoint:` 존재를 검증하므로, SSM 엔드포인트가 템플릿에 추가되면 자동으로 통과한다.
+`test_existing_private_endpoint_and_rds_controls_remain` 테스트는 기존 endpoint logical ID와 Gateway Endpoint가 유지되는지 확인한다. 신규 리소스 추가가 아니라 기존 `SSMVpcEndpoint`/`SecretsManagerVpcEndpoint`의 subnet 목록 축소를 별도 테스트에서 검증한다.
 
 ## Data Models
 
@@ -154,10 +154,10 @@ NAT 인스턴스 운영 가이드 섹션을 추가한다:
 
 | 리소스 | 속성 | 값 |
 |--------|------|-----|
-| `SSMVpcEndpoint` (신규) | `SubnetIds` | `[!Ref LovvPrivateSubnetA]` |
-| `SSMVpcEndpoint` (신규) | `PrivateDnsEnabled` | `true` |
-| `SSMVpcEndpoint` (신규) | `SecurityGroupIds` | `[!Ref LovvEndpointSecurityGroup]` |
-| `SecretsManagerVpcEndpoint` | `SubnetIds` | `[!Ref LovvPrivateSubnetA]` (무변경) |
+| `SSMVpcEndpoint` | `SubnetIds` | `[!Ref LovvPrivateSubnetA]` |
+| `SSMVpcEndpoint` | `PrivateDnsEnabled` | `true` |
+| `SSMVpcEndpoint` | `SecurityGroupIds` | `[!Ref LovvEndpointSecurityGroup]` |
+| `SecretsManagerVpcEndpoint` | `SubnetIds` | `[!Ref LovvPrivateSubnetA]` |
 | `LovvDBSubnetGroup` | `SubnetIds` | `[SubnetA, SubnetC]` (무변경) |
 | `LovvRDSInstance` | `PubliclyAccessible` | `false` (무변경) |
 
@@ -167,25 +167,21 @@ NAT 인스턴스 운영 가이드 섹션을 추가한다:
 
 | 시나리오 | 영향 | 대응 |
 |----------|------|------|
-| SSMVpcEndpoint 생성 실패 | 스택 업데이트 롤백 | CloudFormation 자동 롤백으로 이전 상태 복원 |
-| 기존 SSM Endpoint와 충돌 (이미 존재) | `CREATE_FAILED` | 기존 콘솔에서 생성된 엔드포인트를 삭제 후 재배포, 또는 `import` 사용 |
-| Secrets Manager Endpoint ENI 삭제 실패 | 엔드포인트 업데이트 실패 | CloudFormation 자동 롤백 |
+| Interface Endpoint subnet 수정 실패 | 스택 업데이트 롤백 | CloudFormation 자동 롤백으로 이전 상태 복원 |
+| PrivateSubnetC ENI 삭제 실패 | 엔드포인트 업데이트 실패 | CloudFormation 이벤트와 EC2 VPC endpoint 상태를 확인 후 재시도 |
+| NAT 재활성화 배포 실패 | DB 작업용 접속 경로 미생성 | `EnableNatInstance=true` 파라미터와 `CAPABILITY_IAM` 포함 여부를 확인 후 재배포 |
 
 ### 런타임 에러 처리
 
 | 시나리오 | 현재 동작 | 변경 후 동작 |
 |----------|-----------|-------------|
 | SecretsManager Endpoint 불가 | Lambda 타임아웃 → HTTP 500 | 동일 (변경 없음) |
-| SSM Endpoint 불가 | Lambda에 영향 없음 (미사용) | 동일 (미사용) |
+| SSM Endpoint 불가 | SSM Parameter Store 조회 실패 가능 | 동일 (변경 없음) |
 | DynamoDB Gateway 불가 | Lambda DynamoDB 호출 실패 | 동일 (무변경) |
 
-### CloudFormation Import 전략
+### CloudFormation Import
 
-기존에 콘솔/CLI로 생성된 `SSMVpcEndpoint`가 존재할 경우:
-
-1. `aws cloudformation create-change-set --change-set-type IMPORT`를 사용하여 기존 리소스를 스택으로 가져온다
-2. Import 후 SubnetIds를 `[LovvPrivateSubnetA]`로 업데이트한다
-3. Import가 불가능할 경우, 기존 엔드포인트를 수동 삭제 후 스택 업데이트로 재생성한다
+이번 변경은 기존 CloudFormation logical ID의 `SubnetIds` 수정이므로 import 전략을 사용하지 않는다.
 
 ## Testing Strategy
 

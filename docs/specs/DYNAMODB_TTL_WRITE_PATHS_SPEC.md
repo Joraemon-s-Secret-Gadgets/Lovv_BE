@@ -4,7 +4,7 @@
 - 작성일: 2026-06-18
 - 변경 이력: 1.1 — 보존기간을 단축 기본값으로 전환(로그성 테이블 단축, 캐시성 테이블 유지). S3 아카이브는 후속 작업으로 분리.
 - 대상 브랜치: `feat/dynamodb-cache-ttl`
-- 관련 문서: `reports/dynamodb_ttl_application_write_analysis_20260618_ko.md`, `docs/prd/db_build_prd.md`, `docs/spec/db_build_spec.md`
+- 관련 문서: `reports/dynamodb_ttl_application_write_analysis_20260618_ko.md`, `infra/data-stack/template.yaml`
 - 적용 범위: `src/**`, `tests/**`, 루트 `template.yaml` (인프라 배선 한정)
 
 ## 1. 배경과 현재 상태
@@ -21,7 +21,7 @@
 ### 목표
 
 1. 5개 비인증 만료 테이블에 항목을 쓸 때 `expires_at`를 정수 epoch로 일관되게 기록하는 리포지토리/라이터를 정의한다.
-2. 보존 기간을 PRD/스펙 값과 일치시키는 단일 시간 계산 헬퍼를 정의한다.
+2. 보존 기간을 이 스펙의 단축 기본값과 일치시키는 단일 시간 계산 헬퍼를 정의한다.
 3. 새 쓰기 함수에 대해 TTL 속성명·값 타입을 검증하는 테스트 요구사항을 정의한다.
 4. 새 쓰기 경로가 필요로 하는 환경변수·IAM 배선 규칙을 정의한다.
 5. (선택) TTL 동작을 관측하기 위한 모니터링을 9장에 분리해 정의한다.
@@ -41,13 +41,13 @@
 | TTL 속성명(auth_sessions) | `expiresAt` (변경 금지) |
 | 값 타입 | Number, epoch **초**(seconds), 정수 |
 | 값 계산식 | `expires_at = 생성시각(epoch초) + 보존기간(초)` |
-| 로그 본문 정책 | 요약·참조·해시만 저장. 사용자 대화 원문 저장 금지 (`db_build_spec.md` 7.1) |
+| 로그 본문 정책 | 요약·참조·해시만 저장. 사용자 대화 원문 저장 금지 |
 
 > 주의: 속성명 두 종류(`expires_at` / `expiresAt`)가 섞이지 않도록, 시간 계산 헬퍼는 속성명을 책임지지 않는다. 각 테이블 라이터가 자신의 속성명을 명시적으로 기록한다.
 
 ## 4. 테이블별 쓰기 계약
 
-키 포맷·GSI는 `db_build_spec.md` 7.3/7.4 및 `db_build_prd.md` 4.2/4.3와 일치해야 한다.
+키 포맷·GSI는 아래 테이블의 계약과 `infra/data-stack/template.yaml`의 현재 테이블/GSI 정의를 기준으로 한다. 이전 PRD/DB build 문서는 현재 repo에 존재하지 않으므로 이 스펙에서 직접 필요한 계약을 고정한다.
 
 | 논리 테이블 | `pk` 포맷 | `sk` 포맷 | TTL 속성 | 관련 GSI |
 | --- | --- | --- | --- | --- |
@@ -57,7 +57,7 @@
 | `async_jobs` | `JOB#{job_id}` | `STATUS#{updated_at}` | `expires_at` | 없음 |
 | `api_logs` | `API#{yyyyMMdd}#{endpoint_group}` | `{created_at}#{request_id}` | `expires_at` | GSI1RequestLookup |
 
-GSI 키 속성(`request_id`, `agent_run_id`, `event_type#yyyyMMdd`, `recommendation_request_id`)은 해당 항목에 그 속성이 실제로 존재할 때만 기록한다(`db_build_spec.md` 7.4: 속성이 있는 테이블에만 GSI 적용).
+GSI 키 속성(`request_id`, `agent_run_id`, `event_type#yyyyMMdd`, `recommendation_request_id`)은 해당 항목에 그 속성이 실제로 존재할 때만 기록한다.
 
 ## 5. 보존 기간 규칙 (단축 기본값)
 
@@ -66,8 +66,8 @@ GSI 키 속성(`request_id`, `agent_run_id`, `event_type#yyyyMMdd`, `recommendat
 - 로그성(retention 성격): 운영·트러블슈팅·요청 추적용. 짧게 단축한다.
 - 캐시성(freshness 성격): 캐시 적중률·재검증 비용에 영향. 무분별 단축은 비용을 오히려 늘리므로 유지한다.
 
-출처(원 권고값): `db_build_prd.md` 4.4, `db_build_spec.md` 7.5.
-신뢰도: 보존기간 값은 PRD에서 "권고·잠정, 신뢰도 중, 법무·보안 검토로 확정"으로 명시됨. 아래 단축값도 운영 접근 패턴으로 재확인이 필요한 권고치이며, 6.2의 상수로 분리해 손쉽게 조정한다.
+출처(원 권고값): `reports/dynamodb_ttl_application_write_analysis_20260618_ko.md`의 "Retention Rules From Existing Docs" 섹션에 기록된 과거 권고값.
+결정: 이 스펙은 아래 **단축 기본값**을 구현 계약으로 채택한다. 원 권고값은 비교용 baseline이며 수용 기준이 아니다. 보존기간을 다시 늘리거나 법무·보안 기준으로 확정해야 하면 별도 변경으로 상수와 수용 기준을 함께 갱신한다.
 
 | 논리 테이블 | 성격 | 원 권고값 | **단축 기본값** |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ GSI 키 속성(`request_id`, `agent_run_id`, `event_type#yyyyMMdd`, `recommendat
 
 `festival_verify_cache`는 검증 상태(status)에 따라 보존기간이 분기하므로, 라이터가 상태값을 입력으로 받아 해당 보존기간을 선택한다. 이 테이블의 TTL은 "데이터 보존"이 아니라 "캐시 신선도"를 의미하므로, 단축 시 외부 검증·재계산 호출이 늘어 비용이 증가할 수 있어 현행 값을 유지한다.
 
-> 데이터 손실 경고: 단축 TTL을 S3 아카이브 없이 적용하면, 보존기간을 넘긴 로그는 **영구 삭제**된다. PRD가 요구하는 90일 일자별 분석(`GSI3EventTypeDaily` 용도)·감사/컴플라이언스 보존이 확정 요구사항이라면, 단축 TTL 적용 **전 또는 동시에** 별도 후속 스펙의 S3 아카이브 경로(권장: 앱측 묶음 → Kinesis Firehose Direct PUT → S3 Parquet, Glacier 라이프사이클)를 갖춰야 한다. 본 버전은 "짧은 TTL 우선" 방향에 따라 쓰기 경로부터 구성하며, S3 아카이브는 후속 작업으로 분리한다.
+> 데이터 손실 경고: 단축 TTL을 S3 아카이브 없이 적용하면, 보존기간을 넘긴 로그는 **영구 삭제**된다. 원 권고값 수준의 90일 일자별 분석(`GSI3EventTypeDaily` 용도)·감사/컴플라이언스 보존이 확정 요구사항이라면, 단축 TTL 적용 **전 또는 동시에** 별도 후속 스펙의 S3 아카이브 경로(권장: 앱측 묶음 → Kinesis Firehose Direct PUT → S3 Parquet, Glacier 라이프사이클)를 갖춰야 한다. 본 버전은 "짧은 TTL 우선" 방향에 따라 쓰기 경로부터 구성하며, S3 아카이브는 후속 작업으로 분리한다.
 
 ## 6. 구현 설계
 
@@ -98,7 +98,7 @@ GSI 키 속성(`request_id`, `agent_run_id`, `event_type#yyyyMMdd`, `recommendat
 def ttl_epoch(now_epoch, retention_seconds):
     return int(now_epoch) + int(retention_seconds)
 
-# 보존 기간 상수 (초). 단축 기본값. PRD/운영 확정 시 교체.
+# 보존 기간 상수 (초). 이 스펙의 단축 기본값.
 DAY = 86_400
 RETENTION_SECONDS = {
     "user_event_logs": 14 * DAY,   # 원 권고 90일 → 단축
@@ -230,7 +230,7 @@ Data Stack은 테이블명을 SSM 파라미터로 게시한다(`infra/data-stack
 
 1. `auth_sessions`는 `expiresAt`를 유지하고, 테스트가 `create_session()`이 정수 `expiresAt`를 기록함을 확인한다.
 2. `user_event_logs`, `agent_runs`, `festival_verify_cache`, `async_jobs`, `api_logs`에 대한 신규 쓰기는 정수 `expires_at`를 포함한다.
-3. 보존 기간이 PRD/스펙 값과 일치한다(상수로 분리).
+3. 보존 기간이 이 스펙의 단축 기본값과 일치한다(상수로 분리).
 4. 환경변수·IAM은 실제로 해당 테이블에 읽기/쓰기하는 함수에만 최소 권한으로 추가된다.
 5. 신규 라이터마다 TTL 속성명·값 타입·키 포맷을 검증하는 테스트가 존재한다.
 6. (모니터링 채택 시) 9장 구성 요소가 Data Stack에 추가되고 알람 임계값이 문서화된다.

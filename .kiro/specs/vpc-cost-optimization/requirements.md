@@ -100,9 +100,9 @@
 #### Acceptance Criteria
 
 1. THE CloudFormation_Template SHALL NAT 인스턴스의 기본 상태(`EnableNatInstance`)를 `false`로 유지한다.
-2. THE Data_Stack README SHALL 개발자에게 NAT 인스턴스를 DB 작업 시에만 활성화하고, 작업 완료 후 비활성화하도록 안내하는 운영 가이드를 포함한다.
-3. WHEN NAT 인스턴스가 stopped 상태일 때, THE VPC_Lambda SHALL SecretsManager_Endpoint와 Gateway_Endpoint를 통해 모든 AWS 서비스 호출을 정상 수행한다 (NAT 인스턴스에 의존하지 않는다).
-4. THE Data_Stack README SHALL NAT 인스턴스를 수동으로 중지/시작하는 AWS CLI 명령어를 문서화한다.
+2. THE Data_Stack README SHALL 개발자에게 NAT 인스턴스를 DB 작업 시에만 `EnableNatInstance=true`로 재배포해 생성하고, 작업 완료 후 `EnableNatInstance=false`로 재배포해 제거하도록 안내하는 운영 가이드를 포함한다.
+3. WHEN NAT 인스턴스가 생성되지 않은 상태(`EnableNatInstance=false`)일 때, THE VPC_Lambda SHALL SecretsManager_Endpoint와 Gateway_Endpoint를 통해 모든 AWS 서비스 호출을 정상 수행한다 (NAT 인스턴스에 의존하지 않는다).
+4. THE Data_Stack README SHALL `EnableNatInstance=false` 상태에서는 NAT EC2와 `/lovv/dev/network/nat_instance_id` SSM 파라미터가 존재하지 않아 기존 인스턴스를 `start-instances`로 재시작할 수 없음을 문서화한다.
 
 ### Requirement 8: 테스트 업데이트
 

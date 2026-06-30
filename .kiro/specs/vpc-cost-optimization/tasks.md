@@ -2,22 +2,26 @@
 
 ## Overview
 
-`lovv-dev-data-stack` CloudFormation 스택의 VPC Interface Endpoint 비용을 최적화한다. SSM VPC Endpoint를 단일 AZ로 CloudFormation 템플릿에 추가하고, Secrets Manager Endpoint가 이미 단일 AZ임을 확인하며, NAT 인스턴스 운영 가이드를 README에 추가한다. 테스트 코드로 변경 사항의 정합성을 검증한다.
+`lovv-dev-data-stack` CloudFormation 스택의 VPC Interface Endpoint 비용을 최적화한다. 기존 SSM/Secrets Manager Interface VPC Endpoint에서 `LovvPrivateSubnetC`를 제거해 단일 AZ로 축소하고, NAT 인스턴스 운영 가이드를 현재 배포 모델에 맞게 수정한다. 테스트 코드로 변경 사항의 정합성을 검증한다.
 
 ## Tasks
 
-- [x] 1. SSM VPC Endpoint를 CloudFormation 템플릿에 추가
-  - [x] 1.1 `infra/data-stack/template.yaml`에 SSMVpcEndpoint 리소스 추가
-    - `SecretsManagerVpcEndpoint` 리소스 바로 뒤, `DynamoDBGatewayEndpoint` 앞에 배치
-    - Type: `AWS::EC2::VPCEndpoint`
-    - Properties: VpcId `!Ref LovvDevVPC`, ServiceName `com.amazonaws.${AWS::Region}.ssm`, VpcEndpointType `Interface`, PrivateDnsEnabled `true`, SubnetIds `[!Ref LovvPrivateSubnetA]`, SecurityGroupIds `[!Ref LovvEndpointSecurityGroup]`
-    - 한국어 주석 추가: "SSM Parameter Store VPC Endpoint: 현재 Lambda 런타임에서 미사용이나 향후 활용 가능성을 고려하여 단일 AZ로 유지한다."
+- [x] 1. 기존 Interface VPC Endpoint를 단일 AZ로 축소
+  - [x] 1.1 `infra/data-stack/template.yaml`의 `SSMVpcEndpoint` SubnetIds 축소
+    - 기존 logical ID와 리소스 위치 유지
+    - `SubnetIds`에서 `LovvPrivateSubnetC` 제거
+    - `VpcId`, `ServiceName`, `VpcEndpointType`, `PrivateDnsEnabled`, `SecurityGroupIds` 변경 금지
     - _Requirements: 1.1, 1.2, 6.2, 6.4_
+  - [x] 1.2 `infra/data-stack/template.yaml`의 `SecretsManagerVpcEndpoint` SubnetIds 축소
+    - 기존 logical ID와 리소스 위치 유지
+    - `SubnetIds`에서 `LovvPrivateSubnetC` 제거
+    - `VpcId`, `ServiceName`, `VpcEndpointType`, `PrivateDnsEnabled`, `SecurityGroupIds` 변경 금지
+    - _Requirements: 2.1, 2.2, 6.4_
 
 - [x] 2. SecretsManagerVpcEndpoint 단일 AZ 확인 및 RDS 보안 격리 검증
   - [x] 2.1 `infra/data-stack/template.yaml`에서 SecretsManagerVpcEndpoint의 SubnetIds가 `[!Ref LovvPrivateSubnetA]` 1개만 포함함을 확인
-    - 현재 템플릿이 이미 올바른 상태이므로 변경 불필요
-    - 변경이 필요한 경우에만 수정 (방어적 확인)
+    - 실제 변경은 `LovvPrivateSubnetC` 제거
+    - 단일 AZ 축소 후에도 endpoint security group과 private DNS 설정 유지
     - _Requirements: 2.1, 2.2_
   - [x] 2.2 RDS 보안 격리 구성이 유지됨을 확인
     - `LovvDBSubnetGroup` SubnetIds에 PrivateSubnetA + PrivateSubnetC 포함 확인
@@ -28,8 +32,8 @@
 
 - [x] 3. NAT 인스턴스 운영 가이드를 README에 추가
   - [x] 3.1 `infra/data-stack/README.md`에 NAT 인스턴스 비용 최적화 운영 가이드 섹션 추가
-    - DB 작업 시에만 NAT 인스턴스를 활성화하고 작업 완료 후 비활성화하도록 안내
-    - AWS CLI를 이용한 수동 중지/시작 명령어 문서화 (`aws ec2 stop-instances`, `aws ec2 start-instances`)
+    - DB 작업 시에만 `EnableNatInstance=true`로 재배포하고 작업 완료 후 `EnableNatInstance=false`로 재배포하도록 안내
+    - `EnableNatInstance=false` 상태에서는 NAT EC2와 `/lovv/dev/network/nat_instance_id`가 없으므로 `start-instances`로 복구할 수 없음을 명시
     - Lambda가 NAT 인스턴스에 의존하지 않으며 VPC Endpoint로 모든 AWS 서비스에 접근함을 명시
     - 월 ~$3 절감 효과 안내
     - _Requirements: 7.2, 7.3, 7.4_
@@ -54,9 +58,12 @@
     - `test_private_route_no_igw`: Private route table에 IGW 직접 라우트 없음 검증
     - _Requirements: 8.3, 3.1, 3.2, 3.3, 3.4_
   - [x] 5.4 기존 `tests/test_data_stack_nat_instance.py` 업데이트
-    - `test_existing_private_endpoint_and_rds_controls_remain`이 `SSMVpcEndpoint:` 존재를 이미 검증하므로 SSM 추가 후 통과 확인
+    - `test_existing_private_endpoint_and_rds_controls_remain`이 기존 endpoint logical ID 유지와 Gateway Endpoint 존재를 검증함을 확인
     - SSMVpcEndpoint SubnetIds 수가 1개(PrivateSubnetA만)임을 검증하는 assertion이 있다면 단일 AZ로 변경
     - _Requirements: 8.4_
+  - [x] 5.5 Lambda subnet alignment 회귀 테스트 추가
+    - `test_lambda_subnet_alignment`: root SAM `template.yaml`의 Auth/Admin/Preference/SavedPlans Lambda가 Data Stack의 `PrivateSubnetAParameter`와 같은 private subnet A를 사용함을 검증
+    - _Requirements: 4.1, 4.4, 8.3_
 
 - [x] 6. Final checkpoint - 전체 테스트 실행
   - Ensure all tests pass (`python -m pytest tests/test_data_stack_vpc_endpoints.py tests/test_data_stack_nat_instance.py -v`), ask the user if questions arise.
@@ -66,8 +73,8 @@
 - 이 기능은 Infrastructure as Code(CloudFormation) 변경이므로 property-based testing은 적용하지 않는다
 - 기존 `test_data_stack_nat_instance.py`의 `_block()` 헬퍼 패턴을 재사용하여 테스트 일관성을 유지한다
 - Gateway Endpoint(S3, DynamoDB)는 무료이며 변경 대상이 아니다
-- CloudFormation Import가 필요할 수 있음: 기존 콘솔에서 생성된 SSM Endpoint(`vpce-0acf51d81b0dfe1ec`)가 존재하므로 배포 시 충돌 가능성이 있다
-- NAT 인스턴스 `EnableNatInstance` 기본값은 `false`로 유지되며, 운영 가이드만 추가한다
+- CloudFormation Import는 이번 변경 범위가 아니다. 기존 endpoint logical ID를 유지하고 subnet 목록만 수정한다.
+- NAT 인스턴스 `EnableNatInstance` 기본값은 `false`로 유지되며, 운영 가이드는 true/false 재배포 절차를 따른다
 - Checkpoints에서 `aws cloudformation validate-template` 실행 시 `$env:AWS_CLI_FILE_ENCODING='UTF-8'` 설정 필요 (PowerShell 환경)
 
 ## Task Dependency Graph
