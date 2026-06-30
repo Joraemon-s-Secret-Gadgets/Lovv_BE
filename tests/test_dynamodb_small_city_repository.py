@@ -81,6 +81,8 @@ class DynamoDbSmallCityRepositoryTest(unittest.TestCase):
 
         records = repository.list_city_records()
 
+        self.assertIn("ProjectionExpression", table.scan_calls[0])
+        self.assertIn("#city_key", table.scan_calls[0]["ExpressionAttributeNames"])
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["id"], "KR-47-130")
         self.assertEqual(records[0]["name_ko"], "경주")

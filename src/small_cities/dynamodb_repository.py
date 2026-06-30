@@ -11,6 +11,24 @@ DEFAULT_TABLE_NAME = "TourKoreaDomainDataV2"
 DEFAULT_SOURCE_NAME = "DynamoDBTourKoreaDomainDataV2"
 DEFAULT_METADATA_AUDIT_BUCKET = "lovv-data-pipeline-dev-925273580929"
 CITY_DOMAIN_INDEX = "CityDomainIndex"
+LIST_SCAN_ATTRIBUTE_NAMES = {
+    "#pk": "PK",
+    "#city_key": "city_key",
+    "#city_id": "city_id",
+    "#city_name_en": "city_name_en",
+    "#city_name_ko": "city_name_ko",
+    "#province": "province",
+    "#entity_type": "entity_type",
+    "#title": "title",
+    "#latitude": "latitude",
+    "#longitude": "longitude",
+    "#theme": "theme",
+    "#theme_tags": "theme_tags",
+    "#image_url": "image_url",
+    "#quality_status": "quality_status",
+    "#schema_version": "schema_version",
+}
+LIST_SCAN_PROJECTION = ", ".join(LIST_SCAN_ATTRIBUTE_NAMES)
 
 
 class DynamoDbSmallCityRepository:
@@ -146,7 +164,10 @@ class DynamoDbSmallCityRepository:
 
     def _scan_items(self):
         items = []
-        request = {}
+        request = {
+            "ProjectionExpression": LIST_SCAN_PROJECTION,
+            "ExpressionAttributeNames": LIST_SCAN_ATTRIBUTE_NAMES,
+        }
         while True:
             try:
                 response = self.table.scan(**request)
