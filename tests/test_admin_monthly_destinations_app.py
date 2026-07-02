@@ -32,6 +32,10 @@ def admin_context(user_id="admin-1"):
     return {"userId": user_id, "roles": "R-ADMIN"}
 
 
+def super_admin_context(user_id="super-1"):
+    return {"userId": user_id, "roles": "R-SUPER-ADMIN"}
+
+
 def provider_context(user_id="provider-1", organization_ids=None):
     return {
         "userId": user_id,
@@ -114,6 +118,12 @@ class MonthlyDestinationApiTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 403)
         self.assertEqual(json.loads(response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
+    def test_super_admin_cannot_promote_without_admin_role(self):
+        approved = seed_approved_proposal(self.proposals)
+        response = self._call("POST", COLLECTION, body=promote_body(approved["proposalId"]), context=super_admin_context())
+        self.assertEqual(response["statusCode"], 403)
+        self.assertEqual(json.loads(response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
+
     def test_promote_requires_approved_proposal(self):
         provider = {"userId": "provider-1", "roles": ["R-DATA-PROVIDER"], "organizationIds": ["org-gangneung"]}
         submitted = self.proposals.create(provider, proposal_payload())
@@ -169,6 +179,12 @@ class MonthlyDestinationApiTests(unittest.TestCase):
         candidate = self._seed_candidate()
         response = self._call("POST", f"{COLLECTION}/{candidate['id']}/publish", body={}, context=local_operator_context())
         self.assertEqual(response["statusCode"], 403)
+
+    def test_super_admin_cannot_transition_monthly_destination_without_admin_role(self):
+        candidate = self._seed_candidate()
+        response = self._call("POST", f"{COLLECTION}/{candidate['id']}/publish", body={}, context=super_admin_context())
+        self.assertEqual(response["statusCode"], 403)
+        self.assertEqual(json.loads(response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_transition_unknown_destination_is_404(self):
         response = self._call("POST", f"{COLLECTION}/missing/publish", body={}, context=admin_context())

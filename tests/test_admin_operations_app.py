@@ -32,6 +32,10 @@ def admin_context(user_id="admin-1"):
     return {"userId": user_id, "roles": "R-ADMIN"}
 
 
+def super_admin_context(user_id="super-1"):
+    return {"userId": user_id, "roles": "R-SUPER-ADMIN"}
+
+
 def local_operator_context(user_id="operator-1"):
     return {"userId": user_id, "roles": "R-LOCAL-OPERATOR", "region_ids": "KR-42-150"}
 
@@ -112,6 +116,20 @@ class AdminOperationsApiTests(unittest.TestCase):
 
         list_response = self._call("GET", POLICIES, context=local_operator_context())
         self.assertEqual(list_response["statusCode"], 403)
+
+    def test_super_admin_cannot_manage_regular_operations(self):
+        create_response = self._call(
+            "POST",
+            NOTICES,
+            body={"title": "Blocked", "body": "Super admin approval role only"},
+            context=super_admin_context(),
+        )
+        list_response = self._call("GET", POLICIES, context=super_admin_context())
+
+        self.assertEqual(create_response["statusCode"], 403)
+        self.assertEqual(json.loads(create_response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
+        self.assertEqual(list_response["statusCode"], 403)
+        self.assertEqual(json.loads(list_response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_rejects_client_owned_operation_fields(self):
         notice_response = self._call(
