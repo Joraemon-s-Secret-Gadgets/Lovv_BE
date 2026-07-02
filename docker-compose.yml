@@ -18,10 +18,13 @@ services:
     ports:
       - "13306:3306"  # host 13306 -> container 3306 (avoids local MySQL on 3306)
     volumes:
-      # On FIRST start (empty data volume), MySQL runs every .sql here in
-      # filename order: 001 -> 002 -> 003. FKs to users(id) resolve because 001
-      # (users) runs before 002/003.
-      - ./schema/aurora_mysql:/docker-entrypoint-initdb.d:ro
+      # On FIRST start (empty data volume), MySQL runs these .sql files in
+      # filename order. Base product tables come from the data-stack schema;
+      # admin console migrations then build on users(id).
+      - ./infra/data-stack/rds/schema.sql:/docker-entrypoint-initdb.d/001_base_schema.sql:ro
+      - ./schema/aurora_mysql/002_admin_console_tables.sql:/docker-entrypoint-initdb.d/002_admin_console_tables.sql:ro
+      - ./schema/aurora_mysql/003_admin_operations_tables.sql:/docker-entrypoint-initdb.d/003_admin_operations_tables.sql:ro
+      - ./schema/aurora_mysql/004_admin_high_risk_approvals.sql:/docker-entrypoint-initdb.d/004_admin_high_risk_approvals.sql:ro
       - lovv_mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-plovvlocal"]

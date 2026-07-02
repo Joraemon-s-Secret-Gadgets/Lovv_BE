@@ -6,7 +6,10 @@
 --   4. B2G-safe aggregated metrics with official/partner link separation
 --   5. Admin audit log foundation
 --
--- Apply after schema/aurora_mysql/001_product_api_tables.sql.
+-- Apply after the base product tables exist (users, etc.), which are
+-- provisioned by infra/data-stack/rds/schema.sql (the single source of truth
+-- for base tables). The old schema/aurora_mysql/001_product_api_tables.sql was
+-- a stale duplicate (wrong preferences table name) and has been removed.
 
 CREATE TABLE IF NOT EXISTS admin_organizations (
   id                VARCHAR(80)  NOT NULL,
@@ -66,7 +69,7 @@ CREATE TABLE IF NOT EXISTS user_role_assignments (
     FOREIGN KEY (granted_by) REFERENCES users(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT chk_user_role_code
-    CHECK (role_code IN ('R-ADMIN', 'R-DATA-PROVIDER', 'R-LOCAL-OPERATOR')),
+    CHECK (role_code IN ('R-ADMIN', 'R-SUPER-ADMIN', 'R-DATA-PROVIDER', 'R-LOCAL-OPERATOR')),
   CONSTRAINT chk_user_role_status
     CHECK (status IN ('active', 'suspended', 'revoked')),
   CONSTRAINT chk_user_role_valid_window
@@ -352,3 +355,9 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   CONSTRAINT chk_admin_audit_result
     CHECK (result IN ('allowed', 'denied', 'succeeded', 'failed'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- admin_high_risk_change_requests / admin_mfa_credentials / admin_mfa_sessions
+-- moved to 004_admin_high_risk_approvals.sql as the single source of truth.
+-- They were previously duplicated here with an un-fixed FK/CHECK definition
+-- (ON UPDATE CASCADE on a column used in a CHECK constraint), which fails on
+-- MySQL 8.0 with errno 3823. Apply 004 after this migration to create them.
