@@ -24,6 +24,9 @@ from admin.publish_jobs_repository import (
     RdsDataPublishJobRepository,
 )
 from admin.audit_logs_repository import RdsDataAuditLogRepository, build_audit_entry
+from admin.high_risk_repository import HighRiskChangeError, RdsDataHighRiskChangeRepository
+from admin.mfa_repository import RdsDataAdminMfaRepository
+from admin.mfa_service import AdminMfaError, AdminMfaService, KmsSecretCipher
 from shared.rds_data import RdsDataConfigurationError
 from admin.metrics_repository import (
     EVENT_COUNTER_COLUMNS,
@@ -41,6 +44,8 @@ from shared.authorization import (
     ROLE_ADMIN,
     ROLE_DATA_PROVIDER,
     ROLE_LOCAL_OPERATOR,
+    ROLE_SUPER_ADMIN,
+    authenticated_principal,
     has_any_role,
     require_admin_access,
     require_roles,
@@ -115,40 +120,143 @@ OPERATION_FORBIDDEN_FIELDS = {
     "publishedAt", "published_at", "activatedBy", "activated_by", "activatedAt",
     "activated_at", "archivedAt", "archived_at", "roles", "role", "userId", "user_id",
 }
+ADMIN_MFA_BASE_PATH = "/api/v1/admin/security/mfa"
+ADMIN_MFA_PATHS = {
+    "status": f"{ADMIN_MFA_BASE_PATH}/status",
+    "enroll": f"{ADMIN_MFA_BASE_PATH}/enroll",
+    "confirm": f"{ADMIN_MFA_BASE_PATH}/confirm",
+    "verify": f"{ADMIN_MFA_BASE_PATH}/verify",
+    "recover": f"{ADMIN_MFA_BASE_PATH}/recover",
+}
+HIGH_RISK_REQUESTS_COLLECTION_PATH = "/api/v1/admin/high-risk-requests"
+HIGH_RISK_DECISION_ACTIONS = {"approve", "reject"}
+HIGH_RISK_MFA_MAX_AGE_SECONDS = 300
+
+
+def _require_regular_admin(event):
+    return require_roles(
+        event,
+        {ROLE_ADMIN},
+        error_code="ADMIN_ACCESS_REQUIRED",
+        message="Admin role is required",
+    )
 
 
 def lambda_handler(event, context):
-    return handle_request(event or {})
+    return handle_request(event or {}, enforce_mfa=True)
 
 
-def handle_request(event, repository=None, proposal_repository=None, monthly_repository=None, publish_jobs_repository=None, metrics_repository=None, operations_repository=None, audit_repository=None):
+def handle_request(event, repository=None, proposal_repository=None, monthly_repository=None, publish_jobs_repository=None, metrics_repository=None, operations_repository=None, audit_repository=None, mfa_service=None, high_risk_repository=None, enforce_mfa=False):
     try:
-        return _handle_request(event or {}, repository, proposal_repository, monthly_repository, publish_jobs_repository, metrics_repository, operations_repository, audit_repository)
+        return _handle_request(event or {}, repository, proposal_repository, monthly_repository, publish_jobs_repository, metrics_repository, operations_repository, audit_repository, mfa_service, high_risk_repository, enforce_mfa)
     except AdminRequestError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except ProposalTransitionError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except MonthlyDestinationTransitionError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except PublishJobTransitionError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except OperationTransitionError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
+        return error_response(error.status_code, error.code, error.message)
+    except HighRiskChangeError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
+        return error_response(error.status_code, error.code, error.message)
+    except AdminMfaError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except AuthorizationError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except AuthTokenError as error:
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(error.status_code, error.code, error.message)
     except Exception as error:
         LOGGER.exception("Unhandled admin API error: %s", error.__class__.__name__)
+        _record_sensitive_failure_audit(event, audit_repository, error)
         return error_response(500, "INTERNAL_ERROR", "Internal server error")
 
 
-def _handle_request(event, repository, proposal_repository, monthly_repository=None, publish_jobs_repository=None, metrics_repository=None, operations_repository=None, audit_repository=None):
+def _handle_request(event, repository, proposal_repository, monthly_repository=None, publish_jobs_repository=None, metrics_repository=None, operations_repository=None, audit_repository=None, mfa_service=None, high_risk_repository=None, enforce_mfa=False):
     method = _event_method(event)
     path = _event_path(event)
 
     if method == "OPTIONS":
         return json_response(200, {})
+
+    if path in ADMIN_MFA_PATHS.values():
+        principal = require_admin_access(event)
+        service = mfa_service or _default_mfa_service()
+        if method == "GET" and path == ADMIN_MFA_PATHS["status"]:
+            return json_response(200, {"mfa": service.status(principal)})
+        payload = _json_body(event)
+        if method == "POST" and path == ADMIN_MFA_PATHS["enroll"]:
+            account_name = principal.get("claims", {}).get("email") or principal["userId"]
+            enrollment = service.enroll(principal, account_name)
+            _record_audit(audit_repository, principal, "admin_mfa.enroll", "admin_mfa", principal["userId"], _now_iso())
+            return json_response(200, {"enrollment": enrollment})
+        if method == "POST" and path == ADMIN_MFA_PATHS["confirm"]:
+            result = service.confirm(principal, _required_mfa_value(payload, "code"))
+            _record_audit(audit_repository, principal, "admin_mfa.confirm", "admin_mfa", principal["userId"], _now_iso())
+            return json_response(200, result)
+        if method == "POST" and path == ADMIN_MFA_PATHS["verify"]:
+            status = service.verify(principal, _required_mfa_value(payload, "code"))
+            _record_audit(audit_repository, principal, "admin_mfa.verify", "admin_mfa", principal["userId"], _now_iso())
+            return json_response(200, {"mfa": status})
+        if method == "POST" and path == ADMIN_MFA_PATHS["recover"]:
+            status = service.recover(principal, _required_mfa_value(payload, "recoveryCode"))
+            _record_audit(audit_repository, principal, "admin_mfa.recover", "admin_mfa", principal["userId"], _now_iso())
+            return json_response(200, {"mfa": status})
+        return error_response(404, "NOT_FOUND", "Route not found")
+
+    # Admin-wide MFA requirement removed per ADMIN_RBAC_SPEC: MFA (recent TOTP) is
+    # required only for high-risk approve/reject, enforced at that route below.
+    # Read and other admin routes are guarded by role authorization only.
+    high_risk_id = _high_risk_request_id(path)
+    high_risk_action = _high_risk_action(path, high_risk_id)
+
+    if method == "POST" and path == HIGH_RISK_REQUESTS_COLLECTION_PATH:
+        principal = require_admin_access(event)
+        high_risk_repository = high_risk_repository or RdsDataHighRiskChangeRepository.from_env()
+        request = high_risk_repository.create(principal, _json_body(event), _now_iso())
+        return json_response(201, {"request": _public_high_risk_request(request)})
+
+    if method == "GET" and path == HIGH_RISK_REQUESTS_COLLECTION_PATH:
+        require_admin_access(event)
+        query = event.get("queryStringParameters") or {}
+        high_risk_repository = high_risk_repository or RdsDataHighRiskChangeRepository.from_env()
+        requests = high_risk_repository.list(
+            status=query.get("status"),
+            operation_type=query.get("operationType"),
+            limit=_parse_limit(query.get("limit")),
+        )
+        return json_response(200, {"items": [_public_high_risk_request(request) for request in requests], "nextCursor": None})
+
+    if method == "POST" and high_risk_id and high_risk_action in HIGH_RISK_DECISION_ACTIONS:
+        principal = require_roles(
+            event,
+            {ROLE_SUPER_ADMIN},
+            error_code="SUPER_ADMIN_REQUIRED",
+            message="Super admin role is required",
+        )
+        if enforce_mfa:
+            (mfa_service or _default_mfa_service()).require_verified(
+                principal,
+                max_age_seconds=HIGH_RISK_MFA_MAX_AGE_SECONDS,
+                allowed_methods={"totp"},
+            )
+        payload = _validate_high_risk_decision_payload(_json_body(event), require_reason=high_risk_action == "reject")
+        high_risk_repository = high_risk_repository or RdsDataHighRiskChangeRepository.from_env()
+        if high_risk_action == "approve":
+            request = high_risk_repository.approve(high_risk_id, principal, _now_iso(), decision_reason=payload.get("decisionReason"))
+        else:
+            request = high_risk_repository.reject(high_risk_id, principal, _now_iso(), payload["decisionReason"])
+        return json_response(200, {"request": _public_high_risk_request(request)})
 
     if method == "GET" and path == "/api/v1/admin/users":
         require_admin_access(event)
@@ -170,7 +278,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
     policy_action = _policy_action(path, policy_id)
 
     if method == "GET" and path == NOTICES_COLLECTION_PATH:
-        require_admin_access(event)
+        _require_regular_admin(event)
         query = event.get("queryStringParameters") or {}
         status = _validate_notice_status(query.get("status")) if query.get("status") else None
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
@@ -178,7 +286,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         return json_response(200, {"items": [_public_notice(notice) for notice in notices], "nextCursor": None})
 
     if method == "POST" and path == NOTICES_COLLECTION_PATH:
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_notice_payload(_json_body(event))
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
         notice = operations_repository.create_notice(principal, payload, _now_iso())
@@ -186,7 +294,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         return json_response(201, {"notice": _public_notice(notice)})
 
     if method == "POST" and notice_id and notice_action in NOTICE_ACTIONS:
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_empty_operation_payload(_json_body(event))
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
         notice = operations_repository.transition_notice(notice_id, notice_action, principal, _now_iso())
@@ -196,7 +304,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         return json_response(200, {"notice": _public_notice(notice)})
 
     if method == "GET" and path == POLICIES_COLLECTION_PATH:
-        require_admin_access(event)
+        _require_regular_admin(event)
         query = event.get("queryStringParameters") or {}
         status = _validate_policy_status(query.get("status")) if query.get("status") else None
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
@@ -204,7 +312,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         return json_response(200, {"items": [_public_policy(policy) for policy in policies], "nextCursor": None})
 
     if method == "POST" and path == POLICIES_COLLECTION_PATH:
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_policy_payload(_json_body(event))
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
         policy = operations_repository.create_policy(principal, payload, _now_iso())
@@ -212,7 +320,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         return json_response(201, {"policy": _public_policy(policy)})
 
     if method == "POST" and policy_id and policy_action in POLICY_ACTIONS:
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_empty_operation_payload(_json_body(event))
         operations_repository = operations_repository or RdsDataAdminOperationsRepository.from_env()
         policy = operations_repository.transition_policy(policy_id, policy_action, principal, _now_iso())
@@ -260,7 +368,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
     if method == "POST" and proposal_id and proposal_action in {"review", "approve", "reject"}:
         # State changes are admin-only; the repository also blocks reviewing
         # one's own proposal (SELF_REVIEW_FORBIDDEN).
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_review_payload(_json_body(event), require_note=proposal_action == "reject")
         proposal_repository = proposal_repository or RdsDataAdminProposalRepository.from_env()
         proposal = proposal_repository.transition(
@@ -299,7 +407,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
         # Promote an approved proposal into a monthly candidate. Admin-only; the
         # city/region/source fields are copied from the proposal so the candidate
         # cannot drift from the content that was actually approved.
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_monthly_create_payload(_json_body(event))
         proposal_repository = proposal_repository or RdsDataAdminProposalRepository.from_env()
         source = proposal_repository.get_visible(payload["sourceProposalId"], principal)
@@ -374,7 +482,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
     if method == "POST" and monthly_id and monthly_action in MONTHLY_ACTIONS:
         # Publish-state transitions are admin-only and validated against the state
         # machine in the repository (409 MONTHLY_TRANSITION_FORBIDDEN if illegal).
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_monthly_action_payload(_json_body(event))
         monthly_repository = monthly_repository or RdsDataMonthlyDestinationRepository.from_env()
         now = _now_iso()
@@ -466,7 +574,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
     if method == "POST" and publish_job_id and publish_job_action in PUBLISH_JOB_ACTIONS:
         # Drive a reflection job through its status machine. Admin-only; the state
         # machine is enforced in the repository (409 PUBLISH_JOB_TRANSITION_FORBIDDEN).
-        principal = require_admin_access(event)
+        principal = _require_regular_admin(event)
         payload = _validate_publish_job_action_payload(_json_body(event))
         publish_jobs_repository = publish_jobs_repository or RdsDataPublishJobRepository.from_env()
         job = publish_jobs_repository.transition(
@@ -480,7 +588,7 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
     if method == "GET" and path == AUDIT_LOGS_COLLECTION_PATH:
         # Admin-only audit trail read. This is also the monitoring surface: every
         # admin mutation is recorded here with actor + result.
-        require_admin_access(event)
+        _require_regular_admin(event)
         audit_repository = audit_repository or RdsDataAuditLogRepository.from_env()
         query = event.get("queryStringParameters") or {}
         entries = audit_repository.list(
@@ -510,6 +618,53 @@ def _public_admin_user(user):
         "onboardingCompleted": bool(user.get("onboardingCompleted")),
         "savedItineraryCount": int(user.get("savedItineraryCount") or 0),
     }
+
+
+def _public_high_risk_request(request):
+    return {
+        "id": request.get("id"),
+        "operationType": request.get("operationType"),
+        "targetUserId": request.get("targetUserId"),
+        "payload": request.get("payload") or {},
+        "status": request.get("status"),
+        "reason": request.get("reason"),
+        "requestedBy": request.get("requestedBy"),
+        "decidedBy": request.get("decidedBy"),
+        "decisionReason": request.get("decisionReason"),
+        "requestedAt": request.get("requestedAt"),
+        "decidedAt": request.get("decidedAt"),
+        "executedAt": request.get("executedAt"),
+        "executionSummary": request.get("executionSummary") or {},
+        "updatedAt": request.get("updatedAt"),
+    }
+
+
+def _default_mfa_service():
+    return AdminMfaService(RdsDataAdminMfaRepository.from_env(), KmsSecretCipher())
+
+
+def _required_mfa_value(payload, field):
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise AdminRequestError(400, "INVALID_ADMIN_MFA_PAYLOAD", f"{field} is required")
+    return value.strip()
+
+
+def _validate_high_risk_decision_payload(payload, require_reason=False):
+    allowed = {"decisionReason"}
+    unexpected = sorted(set(payload.keys()) - allowed)
+    if unexpected:
+        raise AdminRequestError(400, "INVALID_HIGH_RISK_DECISION", "Decision payload contains unsupported fields")
+    value = payload.get("decisionReason")
+    if value in (None, ""):
+        reason = None
+    elif isinstance(value, str):
+        reason = value.strip() or None
+    else:
+        raise AdminRequestError(400, "INVALID_HIGH_RISK_DECISION", "decisionReason must be a string")
+    if require_reason and not reason:
+        raise AdminRequestError(400, "INVALID_HIGH_RISK_DECISION", "decisionReason is required")
+    return {"decisionReason": reason}
 
 
 def _validate_create_proposal_payload(payload):
@@ -985,6 +1140,22 @@ def _publish_job_action(path, job_id):
     return path[len(prefix):].strip("/") or None
 
 
+def _high_risk_request_id(path):
+    prefix = f"{HIGH_RISK_REQUESTS_COLLECTION_PATH}/"
+    if path.startswith(prefix):
+        return path[len(prefix):].split("/", 1)[0] or None
+    return None
+
+
+def _high_risk_action(path, request_id):
+    if not request_id:
+        return None
+    prefix = f"{HIGH_RISK_REQUESTS_COLLECTION_PATH}/{request_id}/"
+    if not path.startswith(prefix):
+        return None
+    return path[len(prefix):].strip("/") or None
+
+
 def _notice_id(path):
     prefix = f"{NOTICES_COLLECTION_PATH}/"
     if path.startswith(prefix):
@@ -1039,6 +1210,82 @@ def _record_audit(audit_repository, principal, action, resource_type, resource_i
         LOGGER.debug("Audit storage not configured; skipping audit for %s", action)
     except Exception:
         LOGGER.exception("Failed to record admin audit log for action %s", action)
+
+
+_HIGH_RISK_FAILED_CODES = {
+    "ACTIVE_ASSIGNMENT_NOT_FOUND",
+    "HIGH_RISK_REQUEST_STATE_CONFLICT",
+    "MONTHLY_DESTINATION_NOT_FOUND",
+    "MONTHLY_TRANSITION_FORBIDDEN",
+}
+
+
+def _record_sensitive_failure_audit(event, audit_repository, error):
+    """Persist denied/failed security events outside the rolled-back business transaction."""
+    method = _event_method(event or {})
+    path = _event_path(event or {})
+    action = None
+    resource_type = None
+    resource_id = None
+
+    high_risk_id = _high_risk_request_id(path)
+    high_risk_action = _high_risk_action(path, high_risk_id)
+    if method == "POST" and high_risk_action in HIGH_RISK_DECISION_ACTIONS:
+        action = f"high_risk_request.{high_risk_action}"
+        resource_type = "high_risk_request"
+        resource_id = high_risk_id
+    elif method == "POST" and path in ADMIN_MFA_PATHS.values():
+        mfa_action = next((name for name, route in ADMIN_MFA_PATHS.items() if route == path), None)
+        if mfa_action in {"enroll", "confirm", "verify", "recover"}:
+            action = f"admin_mfa.{mfa_action}"
+            resource_type = "admin_mfa"
+
+    if action is None:
+        return
+
+    try:
+        principal = authenticated_principal(event or {})
+    except Exception:
+        principal = {}
+    if resource_type == "admin_mfa":
+        resource_id = principal.get("userId")
+
+    reason_code = getattr(error, "code", error.__class__.__name__)
+    result = "failed" if reason_code in _HIGH_RISK_FAILED_CODES or not isinstance(
+        error, (AuthorizationError, AuthTokenError, AdminMfaError, HighRiskChangeError, AdminRequestError)
+    ) else "denied"
+    metadata = {
+        "errorClass": error.__class__.__name__,
+        "httpStatus": int(getattr(error, "status_code", 500)),
+        "method": method,
+        "operationType": getattr(error, "operation_type", None),
+        "targetUserId": getattr(error, "target_user_id", None),
+    }
+    metadata = {key: value for key, value in metadata.items() if value is not None}
+    entry = build_audit_entry(
+        principal,
+        action,
+        resource_type,
+        resource_id,
+        _now_iso(),
+        result=result,
+        reason_code=reason_code,
+        metadata=metadata,
+    )
+    try:
+        repository = audit_repository or RdsDataAuditLogRepository.from_env()
+        repository.record(entry, strict=True)
+    except Exception:
+        # The primary audit sink may be the component that failed. Preserve a
+        # machine-searchable fallback in the platform log/metric pipeline.
+        LOGGER.exception(
+            "SECURITY_AUDIT_FALLBACK action=%s result=%s reason_code=%s resource_id=%s actor_user_id=%s",
+            action,
+            result,
+            reason_code,
+            resource_id,
+            principal.get("userId"),
+        )
 
 
 def _public_audit_log(entry):

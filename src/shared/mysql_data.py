@@ -5,6 +5,7 @@
 import json
 import os
 import re
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -59,16 +60,7 @@ class MySqlClient:
         # Repositories use RDS Data API-style named parameters; PyMySQL needs positional values.
         translated_sql, values = translate_named_parameters(sql, parameters or {})
         values = [_mysql_parameter_value(value) for value in values]
-        connection = self.connection_factory(
-            host=self.host,
-            port=self.port,
-            user=self.username,
-            password=self.password,
-            database=self.database,
-            charset="utf8mb4",
-            autocommit=False,
-            cursorclass=_dict_cursor_class(),
-        )
+        connection = self._connect()
         try:
             with connection.cursor() as cursor:
                 row_count = cursor.execute(translated_sql, values)
@@ -78,6 +70,52 @@ class MySqlClient:
                 return {"numberOfRecordsUpdated": row_count}
         finally:
             connection.close()
+
+    def fetch_one(self, sql, parameters=None):
+        rows = self.fetch_all(sql, parameters)
+        return rows[0] if rows else None
+
+    def fetch_all(self, sql, parameters=None):
+        return self.execute(sql, parameters, include_result_metadata=True)
+
+    @contextmanager
+    def transaction(self):
+        connection = self._connect()
+        transaction = _MySqlTransaction(connection)
+        try:
+            yield transaction
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _connect(self):
+        return self.connection_factory(
+            host=self.host,
+            port=self.port,
+            user=self.username,
+            password=self.password,
+            database=self.database,
+            charset="utf8mb4",
+            autocommit=False,
+            cursorclass=_dict_cursor_class(),
+        )
+
+
+class _MySqlTransaction:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, sql, parameters=None, include_result_metadata=True):
+        translated_sql, values = translate_named_parameters(sql, parameters or {})
+        values = [_mysql_parameter_value(value) for value in values]
+        with self.connection.cursor() as cursor:
+            row_count = cursor.execute(translated_sql, values)
+            if include_result_metadata:
+                return [_api_row(row) for row in cursor.fetchall()]
+            return {"numberOfRecordsUpdated": row_count}
 
     def fetch_one(self, sql, parameters=None):
         rows = self.fetch_all(sql, parameters)

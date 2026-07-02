@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import contextmanager
 
 
 class RdsDataConfigurationError(Exception):
@@ -34,6 +35,55 @@ class RdsDataClient:
     def fetch_all(self, sql, parameters=None):
         response = self.execute(sql, parameters, include_result_metadata=True)
         return records_to_dicts(response)
+
+    @contextmanager
+    def transaction(self):
+        response = self.client.begin_transaction(
+            resourceArn=self.cluster_arn,
+            secretArn=self.secret_arn,
+            database=self.database,
+        )
+        transaction_id = response["transactionId"]
+        transaction = _RdsDataTransaction(self, transaction_id)
+        try:
+            yield transaction
+            self.client.commit_transaction(
+                resourceArn=self.cluster_arn,
+                secretArn=self.secret_arn,
+                transactionId=transaction_id,
+            )
+        except Exception:
+            self.client.rollback_transaction(
+                resourceArn=self.cluster_arn,
+                secretArn=self.secret_arn,
+                transactionId=transaction_id,
+            )
+            raise
+
+
+class _RdsDataTransaction:
+    def __init__(self, owner, transaction_id):
+        self.owner = owner
+        self.transaction_id = transaction_id
+
+    def execute(self, sql, parameters=None, include_result_metadata=True):
+        request = {
+            "resourceArn": self.owner.cluster_arn,
+            "secretArn": self.owner.secret_arn,
+            "database": self.owner.database,
+            "transactionId": self.transaction_id,
+            "sql": sql,
+            "parameters": [_parameter(name, value) for name, value in (parameters or {}).items()],
+            "includeResultMetadata": include_result_metadata,
+        }
+        return self.owner.client.execute_statement(**request)
+
+    def fetch_one(self, sql, parameters=None):
+        rows = self.fetch_all(sql, parameters)
+        return rows[0] if rows else None
+
+    def fetch_all(self, sql, parameters=None):
+        return records_to_dicts(self.execute(sql, parameters, include_result_metadata=True))
 
 
 def records_to_dicts(response):
