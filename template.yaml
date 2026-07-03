@@ -15,6 +15,14 @@ Parameters:
     Type: String
     Default: raw/KR/details/20260609/
     Description: S3 prefix for city-by-city raw detail JSON files.
+  MapCityDynamoTableName:
+    Type: String
+    Default: TourKoreaDomainDataV2
+    Description: Existing DynamoDB table that stores latest Tour Korea city-domain records.
+  MapCityMetadataAuditKey:
+    Type: String
+    Default: ''
+    Description: Optional S3 object key for Tour Korea metadata audit JSON used to supply canonical city metadata.
   ImageCdnBaseUrl:
     Type: String
     Default: ''
@@ -1067,6 +1075,76 @@ Resources:
             Method: POST
             Path: /api/v1/recommendations
 
+  RecommendationFeedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: recommendations.app.lambda_handler
+      Description: Home monthly city and authenticated reaction-based recommendation feed API.
+      Timeout: 30
+      Environment:
+        Variables:
+          DB_ACCESS_MODE: mysql
+          RDS_HOST: !Ref RdsHost
+          RDS_SECRET_ARN: !Ref RdsSecretArn
+          RDS_DATABASE_NAME: !Ref RdsDatabaseName
+          USERS_TABLE_NAME: !Ref UsersTableName
+          SAVED_PLANS_TABLE_NAME: !Ref SavedPlansTableName
+          PLAN_REACTIONS_TABLE_NAME: !Ref PlanReactionsTableName
+          MAP_CITY_SOURCE: dynamodb
+          MAP_CITY_DYNAMODB_TABLE: !Ref MapCityDynamoTableName
+          MAP_CITY_METADATA_AUDIT_BUCKET: !Ref MapCityS3Bucket
+          MAP_CITY_METADATA_AUDIT_KEY: !Ref MapCityMetadataAuditKey
+          MAP_CITY_S3_BUCKET: !Ref MapCityS3Bucket
+          MAP_CITY_S3_PREFIX: !Ref MapCityS3Prefix
+          IMAGE_CDN_BASE_URL: !Ref ImageCdnBaseUrl
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref AppFunctionSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetC
+      Policies:
+        - AWSLambdaVPCAccessExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref RdsSecretArn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:GetItem
+              Resource:
+                - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}
+                - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}/index/CityDomainIndex
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${MapCityS3Bucket}/metadata_audit/*
+      Events:
+        MonthlyCities:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/recommendations/monthly-cities
+        PopularDestinations:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/recommendations/popular-destinations
+        ReactionCities:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/recommendations/reaction-cities
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+
   SavedPlansFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1175,15 +1253,27 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: small_cities.app.lambda_handler
-      Description: Read-only small-city API backed by S3 raw city detail JSON.
+      Description: Read-only small-city API backed by DynamoDB TourKoreaDomainDataV2, with S3 raw fallback support.
       Timeout: 30
       Environment:
         Variables:
+          MAP_CITY_SOURCE: dynamodb
+          MAP_CITY_DYNAMODB_TABLE: !Ref MapCityDynamoTableName
+          MAP_CITY_METADATA_AUDIT_BUCKET: !Ref MapCityS3Bucket
+          MAP_CITY_METADATA_AUDIT_KEY: !Ref MapCityMetadataAuditKey
           MAP_CITY_S3_BUCKET: !Ref MapCityS3Bucket
           MAP_CITY_S3_PREFIX: !Ref MapCityS3Prefix
           IMAGE_CDN_BASE_URL: !Ref ImageCdnBaseUrl
       Policies:
         - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:GetItem
+              Resource:
+                - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}
+                - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}/index/CityDomainIndex
             - Effect: Allow
               Action:
                 - s3:ListBucket
@@ -1198,6 +1288,7 @@ Resources:
                 - s3:GetObject
               Resource:
                 - !Sub arn:${AWS::Partition}:s3:::${MapCityS3Bucket}/${MapCityS3Prefix}*
+                - !Sub arn:${AWS::Partition}:s3:::${MapCityS3Bucket}/metadata_audit/*
       Events:
         ListSmallCities:
           Type: HttpApi
