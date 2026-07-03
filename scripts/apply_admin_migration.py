@@ -2,7 +2,7 @@
 """Dev-only: apply a schema/aurora_mysql/*.sql migration to the target DB.
 
     python scripts/apply_admin_migration.py            # default: 002 admin console
-    python scripts/apply_admin_migration.py 003        # prefix match -> 003_*.sql
+    python scripts/apply_admin_migration.py 003        # unique prefix match -> 003_*.sql
     python scripts/apply_admin_migration.py 003_admin_operations_tables.sql
 
 Run while an SSM port-forward to dev RDS is open (e.g. 127.0.0.1:13306).
@@ -25,15 +25,18 @@ try:
 except ImportError:
     sys.exit("pymysql is not installed. Run: pip install pymysql")
 
-def _resolve_migration():
-    schema_dir = Path(__file__).resolve().parents[1] / "schema" / "aurora_mysql"
-    arg = sys.argv[1] if len(sys.argv) > 1 else "002_admin_console_tables.sql"
+def _resolve_migration(arg=None, schema_dir=None):
+    schema_dir = schema_dir or Path(__file__).resolve().parents[1] / "schema" / "aurora_mysql"
+    arg = arg or (sys.argv[1] if len(sys.argv) > 1 else "002_admin_console_tables.sql")
     candidate = schema_dir / arg
-    if candidate.exists():
+    if candidate.is_file():
         return candidate
     matches = sorted(schema_dir.glob(f"{arg}*.sql"))
-    if matches:
+    if len(matches) == 1:
         return matches[0]
+    if len(matches) > 1:
+        names = ", ".join(match.name for match in matches)
+        sys.exit(f"Migration prefix is ambiguous: {arg} (matches: {names}). Use an exact filename.")
     sys.exit(f"Migration file not found: {arg} (looked in {schema_dir})")
 
 
