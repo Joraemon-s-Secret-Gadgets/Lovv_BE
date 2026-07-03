@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -7,13 +8,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.apply_admin_migration import split_statements
+from scripts.apply_admin_migration import _resolve_migration, split_statements
 
 
 MIGRATION = ROOT / "schema" / "aurora_mysql" / "004_admin_high_risk_approvals.sql"
 
 
 class AdminMigrationContractTests(unittest.TestCase):
+    def test_exact_migration_filename_wins_when_prefix_is_ambiguous(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_dir = Path(temp_dir)
+            exact = schema_dir / "004_admin_high_risk_approvals.sql"
+            exact.touch()
+            (schema_dir / "004_add_itinerary_share_columns.sql").touch()
+
+            self.assertEqual(_resolve_migration(exact.name, schema_dir), exact)
+
+    def test_unique_migration_prefix_is_allowed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_dir = Path(temp_dir)
+            migration = schema_dir / "003_admin_operations_tables.sql"
+            migration.touch()
+
+            self.assertEqual(_resolve_migration("003", schema_dir), migration)
+
+    def test_ambiguous_migration_prefix_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_dir = Path(temp_dir)
+            (schema_dir / "004_admin_high_risk_approvals.sql").touch()
+            (schema_dir / "004_add_itinerary_share_columns.sql").touch()
+
+            with self.assertRaises(SystemExit) as context:
+                _resolve_migration("004", schema_dir)
+
+            message = str(context.exception)
+            self.assertIn("Migration prefix is ambiguous: 004", message)
+            self.assertIn("004_admin_high_risk_approvals.sql", message)
+            self.assertIn("004_add_itinerary_share_columns.sql", message)
+
     def test_004_discovers_role_check_and_contains_mfa_tables(self):
         sql = MIGRATION.read_text(encoding="utf-8")
 

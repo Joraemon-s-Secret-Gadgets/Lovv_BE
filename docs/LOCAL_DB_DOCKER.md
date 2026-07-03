@@ -79,8 +79,8 @@ $env:RDS_LOCAL_PORT = "13306"
 $env:RDS_DATABASE = "lovvdev"
 
 python scripts/db_inspect.py            # 스키마/테이블 점검
-python scripts/apply_admin_migration.py 002 # admin console 기본 테이블 수동 재적용
-python scripts/apply_admin_migration.py 004 # 기존 DB의 고위험 승인/MFA 보강
+python scripts/apply_admin_migration.py 002_admin_console_tables.sql # admin console 기본 테이블 수동 재적용
+python scripts/apply_admin_migration.py 004_admin_high_risk_approvals.sql # 기존 DB의 고위험 승인/MFA 보강
 ```
 
 ## 4. 앱 핸들러를 로컬 DB로 직접 붙이기 (env 자격증명)

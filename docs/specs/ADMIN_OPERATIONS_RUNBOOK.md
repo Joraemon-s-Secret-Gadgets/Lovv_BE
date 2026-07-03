@@ -161,8 +161,8 @@ best-effort다. 고위험 변경의 성공 감사는 업무 변경과 동일 트
 기존 운영·staging DB에는 base schema나 신규 설치용 `002`를 임의 재적용하지 않는다. 고위험 승인/MFA 보강이 필요하면 `004_admin_high_risk_approvals.sql`을 적용한다. `004`는 운영 DB의 실제 역할 CHECK 제약 이름과 식을 조회하며 재실행할 수 있다.
 
 ```powershell
-python scripts/apply_admin_migration.py 004
-python scripts/apply_admin_migration.py 004  # 재실행 검증
+python scripts/apply_admin_migration.py 004_admin_high_risk_approvals.sql
+python scripts/apply_admin_migration.py 004_admin_high_risk_approvals.sql  # 재실행 검증
 python scripts/verify_004.py
 python scripts/verify_schema.py
 ```
