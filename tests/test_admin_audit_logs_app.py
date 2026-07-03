@@ -36,6 +36,10 @@ def admin_context(user_id="admin-1"):
     return {"userId": user_id, "roles": "R-ADMIN", "sessionId": "sess-1"}
 
 
+def super_admin_context(user_id="super-1"):
+    return {"userId": user_id, "roles": "R-SUPER-ADMIN", "sessionId": "sess-super"}
+
+
 def data_provider_context(user_id="provider-1"):
     return {"userId": user_id, "roles": "R-DATA-PROVIDER", "organization_ids": "org-1"}
 
@@ -112,6 +116,11 @@ class AuditLogApiTests(unittest.TestCase):
     def test_audit_log_list_is_admin_only(self):
         denied = self._call("GET", AUDIT, context=data_provider_context())
         self.assertEqual(denied["statusCode"], 403)
+
+    def test_super_admin_cannot_list_audit_logs_without_admin_role(self):
+        denied = self._call("GET", AUDIT, context=super_admin_context())
+        self.assertEqual(denied["statusCode"], 403)
+        self.assertEqual(json.loads(denied["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_audit_log_list_returns_recorded_entries(self):
         proposal_id = self._seed_approved()

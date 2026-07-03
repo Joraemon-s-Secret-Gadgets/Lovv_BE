@@ -10,8 +10,8 @@ Credentials resolve the same way as check_admin_migration.py:
   1) RDS_PW (+ optional RDS_USER), or
   2) RDS_SECRET_ARN -> boto3 Secrets Manager.
 
-This writes to the shared dev database. All statements are CREATE TABLE IF NOT
-EXISTS, so re-running is idempotent.
+This writes to the shared dev database. Each migration must be independently
+safe to re-run; the script itself does not provide transactional DDL rollback.
 
     python scripts/apply_admin_migration.py
 """
@@ -35,9 +35,6 @@ def _resolve_migration():
     if matches:
         return matches[0]
     sys.exit(f"Migration file not found: {arg} (looked in {schema_dir})")
-
-
-MIGRATION = _resolve_migration()
 
 
 def resolve_credentials():
@@ -68,27 +65,33 @@ def split_statements(sql_text):
     return statements
 
 
-host = os.environ.get("RDS_LOCAL_HOST", "127.0.0.1")
-port = int(os.environ.get("RDS_LOCAL_PORT", "3306"))
-database = os.environ.get("RDS_DATABASE", "lovvdev")
-user, password = resolve_credentials()
-if not user or not password:
-    sys.exit("Could not resolve DB username/password.")
+def main():
+    migration = _resolve_migration()
+    host = os.environ.get("RDS_LOCAL_HOST", "127.0.0.1")
+    port = int(os.environ.get("RDS_LOCAL_PORT", "3306"))
+    database = os.environ.get("RDS_DATABASE", "lovvdev")
+    user, password = resolve_credentials()
+    if not user or not password:
+        sys.exit("Could not resolve DB username/password.")
 
-sql_text = MIGRATION.read_text(encoding="utf-8")
-statements = split_statements(sql_text)
-print(f"Applying {MIGRATION.name} -> {host}:{port}/{database} as {user}")
-print(f"Statements to run: {len(statements)}")
+    sql_text = migration.read_text(encoding="utf-8")
+    statements = split_statements(sql_text)
+    print(f"Applying {migration.name} -> {host}:{port}/{database} as {user}")
+    print(f"Statements to run: {len(statements)}")
 
-conn = pymysql.connect(host=host, port=port, user=user, password=password, database=database, autocommit=False)
-try:
-    with conn.cursor() as cur:
-        for index, statement in enumerate(statements, start=1):
-            head = statement.splitlines()[0][:70]
-            print(f"  [{index}/{len(statements)}] {head} ...")
-            cur.execute(statement)
-    conn.commit()
-finally:
-    conn.close()
+    conn = pymysql.connect(host=host, port=port, user=user, password=password, database=database, autocommit=False)
+    try:
+        with conn.cursor() as cur:
+            for index, statement in enumerate(statements, start=1):
+                head = statement.splitlines()[0][:70]
+                print(f"  [{index}/{len(statements)}] {head} ...")
+                cur.execute(statement)
+        conn.commit()
+    finally:
+        conn.close()
 
-print(f"\nMigration applied: {MIGRATION.name}. Verify tables with scripts/db_inspect.py.")
+    print(f"\nMigration applied: {migration.name}. Verify tables with scripts/db_inspect.py.")
+
+
+if __name__ == "__main__":
+    main()

@@ -12,6 +12,7 @@ from shared.current_user import authenticated_claims
 # role/scope fields in the request body.
 ROLE_USER = "R-USER"
 ROLE_ADMIN = "R-ADMIN"
+ROLE_SUPER_ADMIN = "R-SUPER-ADMIN"
 ROLE_DATA_PROVIDER = "R-DATA-PROVIDER"
 ROLE_LOCAL_OPERATOR = "R-LOCAL-OPERATOR"
 
@@ -60,7 +61,7 @@ def require_admin_access(event):
     # from a generic role denial.
     return require_roles(
         event,
-        {ROLE_ADMIN},
+        {ROLE_ADMIN, ROLE_SUPER_ADMIN},
         error_code="ADMIN_ACCESS_REQUIRED",
         message="Admin role is required",
     )

@@ -56,6 +56,10 @@ def admin_context(user_id="admin-1"):
     return {"userId": user_id, "roles": "R-ADMIN"}
 
 
+def super_admin_context(user_id="super-1"):
+    return {"userId": user_id, "roles": "R-SUPER-ADMIN"}
+
+
 def local_operator_context(user_id="operator-1", region_ids=None):
     return {
         "userId": user_id,
@@ -413,22 +417,40 @@ class AdminProposalsAppTest(unittest.TestCase):
         self.assertEqual(operator_response["statusCode"], 403)
         self.assertEqual(json.loads(operator_response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
-    def test_creator_cannot_review_own_proposal_even_with_admin_role(self):
-        proposal = self.create_proposal(user_id="admin-1", organization_ids=["org-gangneung"])
+    def test_super_admin_cannot_change_review_status_without_admin_role(self):
+        proposal = self.create_proposal(user_id="provider-1", organization_ids=["org-gangneung"])
 
         response = self.request(
             make_event(
                 "POST",
                 f"/api/v1/admin/data-proposals/{proposal['proposalId']}/review",
-                {"reviewNote": "self review"},
-                authorizer_context=admin_context(user_id="admin-1"),
+                {"reviewNote": "approval role only"},
+                authorizer_context=super_admin_context(),
                 path_parameters={"proposalId": proposal["proposalId"]},
             )
         )
-        body = json.loads(response["body"])
 
         self.assertEqual(response["statusCode"], 403)
-        self.assertEqual(body["error"]["code"], "SELF_REVIEW_FORBIDDEN")
+        self.assertEqual(json.loads(response["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
+
+    def test_creator_cannot_transition_own_proposal_even_with_admin_role(self):
+        for action in ("review", "approve", "reject"):
+            with self.subTest(action=action):
+                proposal = self.create_proposal(user_id="admin-1", organization_ids=["org-gangneung"])
+
+                response = self.request(
+                    make_event(
+                        "POST",
+                        f"/api/v1/admin/data-proposals/{proposal['proposalId']}/{action}",
+                        {"reviewNote": "self review"},
+                        authorizer_context=admin_context(user_id="admin-1"),
+                        path_parameters={"proposalId": proposal["proposalId"]},
+                    )
+                )
+                body = json.loads(response["body"])
+
+                self.assertEqual(response["statusCode"], 403)
+                self.assertEqual(body["error"]["code"], "SELF_REVIEW_FORBIDDEN")
 
     def test_approve_requires_in_review_state(self):
         proposal = self.create_proposal(user_id="provider-1", organization_ids=["org-gangneung"])

@@ -5,9 +5,9 @@
 # Append-only record of every admin mutation. Each entry snapshots who acted
 # (actor + roles/org/region scopes), what action on which resource, and the
 # result, so the console and operators can reconstruct an audit trail. Writes are
-# best-effort: an audit failure must never fail the business operation it records.
-# Both the call site (admin.app._record_audit) and RdsDataAuditLogRepository.record
-# swallow-and-log write errors so a DB/network blip cannot break an admin action.
+# best-effort for ordinary admin actions. High-risk success records are strict
+# and share the business transaction; denied/failed high-risk attempts are
+# written independently after rollback by admin.app.
 
 import logging
 import os
@@ -68,11 +68,12 @@ class RdsDataAuditLogRepository:
     def from_env(cls):
         return cls()
 
-    def record(self, entry):
-        # Best-effort write: audit logging must never fail the business operation
-        # it records, so a DB/network failure here is logged and swallowed.
+    def record(self, entry, transaction=None, strict=False):
+        # Ordinary actions remain best-effort. High-risk changes pass their open
+        # transaction with strict=True so the business mutation and audit row
+        # commit or roll back together.
         try:
-            self.rds.execute(
+            (transaction or self.rds).execute(
                 f"""
                 INSERT INTO {self.table}
                   (id, occurred_at, actor_user_id, session_id, roles_snapshot,
@@ -90,6 +91,8 @@ class RdsDataAuditLogRepository:
             )
         except Exception:
             LOGGER.exception("Failed to persist admin audit log (action=%s)", entry.get("action"))
+            if strict:
+                raise
         return entry
 
     def list(self, action=None, resource_type=None, result=None, actor_user_id=None, limit=50):
@@ -123,7 +126,7 @@ class InMemoryAuditLogRepository:
     def __init__(self):
         self.entries = []
 
-    def record(self, entry):
+    def record(self, entry, transaction=None, strict=False):
         self.entries.append(dict(entry))
         return dict(entry)
 

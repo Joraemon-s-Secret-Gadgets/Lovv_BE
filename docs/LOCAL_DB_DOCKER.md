@@ -1,8 +1,10 @@
 # 로컬 개발 DB (Docker) 가이드
 
 dev RDS에 SSM 터널을 뚫는 대신, 로컬에서 MySQL 8.0 컨테이너를 띄워 DB 작업을 한다.
-스키마(`schema/aurora_mysql/*.sql`)가 `utf8mb4_0900_ai_ci`(MySQL 8.0+) 이므로 컨테이너도 8.0이어야 하고,
-FK가 `users`(001)를 참조하므로 마이그레이션은 `001 → 002 → 003` 순서로 적용돼야 한다.
+스키마가 `utf8mb4_0900_ai_ci`(MySQL 8.0+) 이므로 컨테이너도 8.0이어야 한다.
+기본 product 테이블은 `infra/data-stack/rds/schema.sql`이 단일 기준이고,
+관리자 콘솔 보강은 `schema/aurora_mysql/002 → 003 → 004` 순서로 적용한다.
+`schema/aurora_mysql/001_product_api_tables.sql`은 더 이상 사용하지 않는다.
 
 호스트 포트는 **13306**을 쓴다(로컬에 이미 3306 MySQL이 떠 있어도 충돌하지 않게). 컨테이너 내부는 3306.
 
@@ -12,16 +14,34 @@ FK가 `users`(001)를 참조하므로 마이그레이션은 `001 → 002 → 003
 docker compose up -d
 ```
 
-`docker-compose.yml`이 `schema/aurora_mysql/`를 `/docker-entrypoint-initdb.d`로 마운트하므로,
-**최초 기동 시(데이터 볼륨이 비어 있을 때)** 001 → 002 → 003 이 파일명 순서대로 자동 실행된다.
+`docker-compose.yml`이 base schema와 admin migration 파일을 순서 있는 이름으로
+`/docker-entrypoint-initdb.d`에 마운트하므로, **최초 기동 시(데이터 볼륨이 비어 있을 때)**
+다음 순서로 자동 실행된다.
+
+1. `infra/data-stack/rds/schema.sql`
+2. `schema/aurora_mysql/002_admin_console_tables.sql`
+3. `schema/aurora_mysql/003_admin_operations_tables.sql`
+4. `schema/aurora_mysql/004_admin_high_risk_approvals.sql`
 
 - DB명: `lovvdev`
 - 접속(호스트에서): `127.0.0.1:13306`, user `root`, password `lovvlocal`
+- `004_admin_high_risk_approvals.sql`은 `admin_high_risk_change_requests`, `admin_mfa_credentials`, `admin_mfa_sessions`의 단일 source다.
 
 확인:
 
 ```bash
 docker compose exec mysql mysql -uroot -plovvlocal -e "USE lovvdev; SHOW TABLES;"
+```
+
+전체 기대 테이블과 `R-SUPER-ADMIN` CHECK 반영 여부는 다음으로 확인한다.
+
+```powershell
+$env:RDS_USER = "root"
+$env:RDS_PW = "lovvlocal"
+$env:RDS_LOCAL_HOST = "127.0.0.1"
+$env:RDS_LOCAL_PORT = "13306"
+$env:RDS_DATABASE = "lovvdev"
+python scripts/verify_schema.py
 ```
 
 > 스키마를 바꾼 뒤 처음부터 다시 적용하려면 볼륨을 비우고 재기동한다: `docker compose down -v && docker compose up -d`
@@ -59,7 +79,8 @@ $env:RDS_LOCAL_PORT = "13306"
 $env:RDS_DATABASE = "lovvdev"
 
 python scripts/db_inspect.py            # 스키마/테이블 점검
-python scripts/apply_admin_migration.py # 002만 수동 재적용이 필요할 때
+python scripts/apply_admin_migration.py 002 # admin console 기본 테이블 수동 재적용
+python scripts/apply_admin_migration.py 004 # 기존 DB의 고위험 승인/MFA 보강
 ```
 
 ## 4. 앱 핸들러를 로컬 DB로 직접 붙이기 (env 자격증명)

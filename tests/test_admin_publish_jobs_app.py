@@ -33,6 +33,10 @@ def admin_context(user_id="admin-1"):
     return {"userId": user_id, "roles": "R-ADMIN"}
 
 
+def super_admin_context(user_id="super-1"):
+    return {"userId": user_id, "roles": "R-SUPER-ADMIN"}
+
+
 def local_operator_context(user_id="operator-1", region_ids=None):
     return {"userId": user_id, "roles": "R-LOCAL-OPERATOR", "region_ids": ",".join(region_ids or ["KR-42-150"])}
 
@@ -137,6 +141,13 @@ class PublishJobApiTests(unittest.TestCase):
         job_id = json.loads(response["body"])["reflectionJobs"][0]["id"]
         res = self._call("POST", f"{JOBS}/{job_id}/start", body={}, context=local_operator_context())
         self.assertEqual(res["statusCode"], 403)
+
+    def test_super_admin_cannot_transition_publish_job_without_admin_role(self):
+        destination, response = self._publish()
+        job_id = json.loads(response["body"])["reflectionJobs"][0]["id"]
+        res = self._call("POST", f"{JOBS}/{job_id}/start", body={}, context=super_admin_context())
+        self.assertEqual(res["statusCode"], 403)
+        self.assertEqual(json.loads(res["body"])["error"]["code"], "ADMIN_ACCESS_REQUIRED")
 
     def test_transition_unknown_job_is_404(self):
         res = self._call("POST", f"{JOBS}/missing/start", body={}, context=admin_context())

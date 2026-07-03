@@ -417,6 +417,23 @@ Resources:
         AttributeName: expiresAt
         Enabled: true
 
+  AdminMfaKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Encrypts Lovv administrator TOTP secrets.
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -595,6 +612,10 @@ Resources:
           MONTHLY_CURATED_DESTINATIONS_TABLE_NAME: monthly_curated_destinations
           ADMIN_PUBLISH_JOBS_TABLE_NAME: admin_publish_jobs
           ADMIN_AUDIT_LOGS_TABLE_NAME: admin_audit_logs
+          ADMIN_HIGH_RISK_REQUESTS_TABLE_NAME: admin_high_risk_change_requests
+          ADMIN_MFA_CREDENTIALS_TABLE_NAME: admin_mfa_credentials
+          ADMIN_MFA_SESSIONS_TABLE_NAME: admin_mfa_sessions
+          ADMIN_MFA_KMS_KEY_ID: !GetAtt AdminMfaKey.Arn
           DESTINATION_METRICS_DAILY_TABLE_NAME: destination_metrics_daily
           ADMIN_NOTICES_TABLE_NAME: admin_notices
           ADMIN_RECOMMENDATION_POLICIES_TABLE_NAME: admin_recommendation_policies
@@ -610,6 +631,11 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: !Ref RdsSecretArn
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+              Resource: !GetAtt AdminMfaKey.Arn
       Events:
         AdminListUsers:
           Type: HttpApi
@@ -625,6 +651,46 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: GET
             Path: /api/v1/admin/users/{userId}
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminMfaStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/admin/security/mfa/status
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminMfaEnroll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/security/mfa/enroll
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminMfaConfirm:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/security/mfa/confirm
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminMfaVerify:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/security/mfa/verify
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminMfaRecover:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/security/mfa/recover
             Auth:
               Authorizer: LovvTokenAuthorizer
         AdminCreateDataProposal:
@@ -817,6 +883,38 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: POST
             Path: /api/v1/admin/publish-jobs/{jobId}/cancel
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminCreateHighRiskRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/high-risk-requests
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminListHighRiskRequests:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/admin/high-risk-requests
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminApproveHighRiskRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/high-risk-requests/{requestId}/approve
+            Auth:
+              Authorizer: LovvTokenAuthorizer
+        AdminRejectHighRiskRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/high-risk-requests/{requestId}/reject
             Auth:
               Authorizer: LovvTokenAuthorizer
         AdminListAuditLogs:

@@ -19,6 +19,8 @@ docs/specs/DYNAMODB_TTL_WRITE_PATHS_SPEC.md
 docs/specs/DYNAMODB_TTL_REMEDIATION_EXECUTION_SPEC.md
 ```
 
+`infra/data-stack/rds/schema.sql` is the single base product schema source. Admin console migrations are maintained separately under `schema/aurora_mysql` and local initialization applies `002_admin_console_tables.sql`, `003_admin_operations_tables.sql`, and `004_admin_high_risk_approvals.sql` after the base schema. The removed `001_product_api_tables.sql` is not part of initialization. See `docs/LOCAL_DB_DOCKER.md` for the reproducible order.
+
 주석 정책:
 
 - CloudFormation YAML과 SQL 파일에는 한국어 주석을 함께 둔다.
