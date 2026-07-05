@@ -20,6 +20,15 @@ ENTRY_TYPES = {"map_marker", "chat", "home_recommendation"}
 COUNTRIES = {"KR", "JP"}
 # 여행 기간 유형 정의 (당일치기, 1박2일 등)
 TRIP_TYPES = {"daytrip", "2d1n", "3d2n", "4d3n", "5d4n"}
+THEME_IDS = {"sea_coast", "nature_trekking", "history_tradition", "art_sense", "healing_rest", "food_local"}
+FRONTEND_THEME_LABEL_TO_THEME_ID = {
+    "바다·해안": "sea_coast",
+    "자연·트레킹": "nature_trekking",
+    "역사·전통": "history_tradition",
+    "예술·감성": "art_sense",
+    "온천·휴양": "healing_rest",
+    "미식·노포": "food_local",
+}
 LOGGER = get_logger(__name__)
 
 
@@ -63,7 +72,7 @@ def _handle_request(event):
         return error_response(404, "NOT_FOUND", "Route not found", event=event)
 
     # 1. JSON 바디 파싱 및 스키마/값 정합성 검증
-    payload = _validate_payload(_json_body(event))
+    payload = _validate_payload(_normalize_payload(_json_body(event)))
 
     # 2. 페이로드의 mock=True 또는 환경변수 설정 시 모의 데이터 즉시 반환
     if payload.get("mock") or os.environ.get("MOCK_RECOMMENDATION") == "true":
@@ -272,6 +281,33 @@ def _validate_payload(body):
     if entry_type == "map_marker" and not body.get("destinationId"):
         raise AgentCoreRequestError(400, "VALIDATION_ERROR", "destinationId is required for map marker entry")
     return body
+
+
+def _normalize_payload(body):
+    """Frontend recommendation-create contract를 AgentCore V1 runtime contract로 정렬한다."""
+    if body.get("entryType") != "create":
+        return body
+
+    destination_id = body.get("destinationId")
+    raw_themes = body.get("themes") or body.get("activeRequiredThemes") or []
+    themes = [
+        FRONTEND_THEME_LABEL_TO_THEME_ID.get(theme, theme if theme in THEME_IDS else theme)
+        for theme in raw_themes
+        if isinstance(theme, str) and theme
+    ]
+
+    normalized = dict(body)
+    normalized["entryType"] = "map_marker" if destination_id else "chat"
+    normalized["themes"] = themes
+    normalized["naturalLanguageQuery"] = (
+        body.get("naturalLanguageQuery")
+        or body.get("rawQuery")
+        or body.get("softPreferenceQuery")
+        or ""
+    )
+    normalized["includeFestivals"] = bool(body.get("includeFestivals"))
+
+    return normalized
 
 
 def _real_itinerary_title(destination, trip_type):

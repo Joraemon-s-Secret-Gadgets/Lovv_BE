@@ -52,6 +52,33 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertIn("days", body["itinerary"])
         self.assertNotIn("bedrockAgentCore", response["body"])
 
+    def test_accepts_frontend_create_payload_for_agentcore_v1(self):
+        response = handle_request(
+            make_event(
+                {
+                    "entryType": "create",
+                    "requestId": "frontend-request-1",
+                    "rawQuery": "경주 1박 2일",
+                    "destinationId": "KR-Gyeongju",
+                    "executionMode": "anchored_place_search",
+                    "activeRequiredThemes": ["역사·전통"],
+                    "country": "KR",
+                    "travelYear": 2026,
+                    "travelMonth": 7,
+                    "tripType": "2d1n",
+                    "includeFestivals": False,
+                    "userLocation": None,
+                }
+            )
+        )
+        body = json.loads(response["body"])
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(body["requestSnapshot"]["entryType"], "map_marker")
+        self.assertEqual(body["requestSnapshot"]["themes"], ["history_tradition"])
+        self.assertEqual(body["requestSnapshot"]["naturalLanguageQuery"], "경주 1박 2일")
+        self.assertEqual(body["destination"]["destinationId"], "KR-Gyeongju")
+
     def test_validates_required_map_marker_destination(self):
         response = handle_request(
             make_event(
