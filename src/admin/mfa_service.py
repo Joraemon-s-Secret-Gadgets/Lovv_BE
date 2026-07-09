@@ -81,6 +81,18 @@ class AdminMfaService:
         credential = self.repository.get_credential(principal["userId"])
         if credential and credential.get("status") == "active":
             raise AdminMfaError(409, "ADMIN_MFA_ALREADY_ENROLLED", "Admin MFA is already enrolled")
+        return self._start_enrollment(principal, account_name)
+
+    def recovery_enroll(self, principal, account_name):
+        self.require_verified(
+            principal,
+            allowed_methods={"recovery_code"},
+            method_error_code="ADMIN_MFA_RECOVERY_REQUIRED",
+            method_error_message="A recovery code session is required",
+        )
+        return self._start_enrollment(principal, account_name)
+
+    def _start_enrollment(self, principal, account_name):
         secret = pyotp.random_base32()
         now = self._now_iso()
         self.repository.save_pending(principal["userId"], self.cipher.encrypt(secret), now)
@@ -121,12 +133,19 @@ class AdminMfaService:
         self._record_session(principal, "recovery_code")
         return self.status(principal)
 
-    def require_verified(self, principal, max_age_seconds=None, allowed_methods=None):
+    def require_verified(
+        self,
+        principal,
+        max_age_seconds=None,
+        allowed_methods=None,
+        method_error_code="ADMIN_MFA_TOTP_REQUIRED",
+        method_error_message="A recent authenticator code is required",
+    ):
         session = self._session(principal)
         if not self._session_is_valid(session, max_age_seconds=max_age_seconds):
             raise AdminMfaError(403, "ADMIN_MFA_REQUIRED", "Admin MFA verification is required")
         if allowed_methods and session.get("method") not in set(allowed_methods):
-            raise AdminMfaError(403, "ADMIN_MFA_TOTP_REQUIRED", "A recent authenticator code is required")
+            raise AdminMfaError(403, method_error_code, method_error_message)
         return session
 
     def _credential(self, principal, expected_status):

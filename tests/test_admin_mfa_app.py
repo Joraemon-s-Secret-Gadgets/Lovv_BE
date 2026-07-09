@@ -161,8 +161,81 @@ class AdminMfaAppTest(unittest.TestCase):
         )
 
         self.assertEqual(recovered["statusCode"], 200)
+        self.assertEqual(json.loads(recovered["body"])["mfa"]["recoveryCodesRemaining"], 7)
+        self.assertEqual(len(self.repository.credentials["admin-1"]["recoveryCodes"]), 7)
         self.assertEqual(reused["statusCode"], 403)
         self.assertEqual(json.loads(reused["body"])["error"]["code"], "ADMIN_MFA_CODE_INVALID")
+
+    def test_recovery_session_can_reenroll_totp_and_rotate_recovery_codes(self):
+        original_enrollment, confirmed = self.enroll_and_confirm()
+        recovery_code = confirmed["recoveryCodes"][0]
+        self.request(
+            "POST",
+            "/api/v1/admin/security/mfa/recover",
+            {"recoveryCode": recovery_code},
+            session_id="session-2",
+        )
+
+        recovery_enrolled = self.request(
+            "POST",
+            "/api/v1/admin/security/mfa/recovery/enroll",
+            {},
+            session_id="session-2",
+        )
+        new_enrollment = json.loads(recovery_enrolled["body"])["enrollment"]
+        self.assertNotEqual(new_enrollment["secret"], original_enrollment["secret"])
+        self.assertEqual(self.repository.credentials["admin-1"]["status"], "pending")
+
+        self.now += timedelta(seconds=30)
+        old_totp = pyotp.TOTP(original_enrollment["secret"]).at(self.now)
+        old_code_rejected = self.request(
+            "POST",
+            "/api/v1/admin/security/mfa/confirm",
+            {"code": old_totp},
+            session_id="session-2",
+        )
+        self.assertEqual(old_code_rejected["statusCode"], 403)
+        self.assertEqual(json.loads(old_code_rejected["body"])["error"]["code"], "ADMIN_MFA_CODE_INVALID")
+
+        new_totp = pyotp.TOTP(new_enrollment["secret"]).at(self.now)
+        reconfirmed = self.request(
+            "POST",
+            "/api/v1/admin/security/mfa/confirm",
+            {"code": new_totp},
+            session_id="session-2",
+        )
+        body = json.loads(reconfirmed["body"])
+        self.assertEqual(reconfirmed["statusCode"], 200)
+        self.assertEqual(len(body["recoveryCodes"]), 8)
+        self.assertEqual(body["status"]["credentialStatus"], "active")
+        self.assertTrue(body["status"]["sessionVerified"])
+        self.assertEqual(self.repository.sessions[("admin-1", "session-2")]["method"], "totp")
+        self.assertIn("admin_mfa.recovery_enroll", [entry["action"] for entry in self.audit.entries])
+
+    def test_recovery_enroll_requires_recovery_session(self):
+        self.enroll_and_confirm()
+        no_mfa = self.request("POST", "/api/v1/admin/security/mfa/recovery/enroll", {}, session_id="session-2")
+        self.now += timedelta(seconds=30)
+        verified = self.request(
+            "POST",
+            "/api/v1/admin/security/mfa/verify",
+            {"code": pyotp.TOTP(self.repository.credentials["admin-1"]["encryptedSecret"]).at(self.now)},
+            session_id="session-2",
+        )
+        totp_session = self.request("POST", "/api/v1/admin/security/mfa/recovery/enroll", {}, session_id="session-2")
+
+        self.assertEqual(no_mfa["statusCode"], 403)
+        self.assertEqual(json.loads(no_mfa["body"])["error"]["code"], "ADMIN_MFA_REQUIRED")
+        self.assertEqual(verified["statusCode"], 200)
+        self.assertEqual(totp_session["statusCode"], 403)
+        self.assertEqual(json.loads(totp_session["body"])["error"]["code"], "ADMIN_MFA_RECOVERY_REQUIRED")
+        recovery_enroll_denials = [
+            entry for entry in self.audit.entries if entry["action"] == "admin_mfa.recovery_enroll"
+        ]
+        self.assertEqual([entry["reasonCode"] for entry in recovery_enroll_denials], [
+            "ADMIN_MFA_REQUIRED",
+            "ADMIN_MFA_RECOVERY_REQUIRED",
+        ])
 
 
 if __name__ == "__main__":
