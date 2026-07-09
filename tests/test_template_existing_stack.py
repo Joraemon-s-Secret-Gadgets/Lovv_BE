@@ -129,6 +129,7 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             "Path: /api/v1/admin/recommendation-policies",
             "Path: /api/v1/admin/recommendation-policies/{policyId}/activate",
             "Path: /api/v1/admin/recommendation-policies/{policyId}/archive",
+            "Path: /api/v1/admin/security/mfa/recovery/enroll",
             "Path: /api/v1/admin/audit-logs",
         ):
             path_index = admin_block.index(path)
