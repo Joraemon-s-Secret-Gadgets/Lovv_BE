@@ -89,10 +89,10 @@ class RdsDataAdminMfaRepository:
         result = self.rds.execute(
             f"""
             UPDATE {self.credentials_table}
-            SET recovery_codes_json = :remaining_codes, failed_attempts = 0,
+            SET recovery_codes_json = CAST(:remaining_codes AS JSON), failed_attempts = 0,
                 locked_until = NULL, updated_at = :updated_at
             WHERE user_id = :user_id AND status = 'active'
-              AND recovery_codes_json = :current_codes
+              AND recovery_codes_json = CAST(:current_codes AS JSON)
             """,
             {
                 "user_id": user_id,

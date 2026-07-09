@@ -12,6 +12,9 @@ verifies against the live API.
     # data-provider token (create/list own)
     set MINT_ROLE=R-DATA-PROVIDER && python scripts/mint_dev_admin_token.py   # cmd
     $env:MINT_ROLE="R-DATA-PROVIDER"; python scripts/mint_dev_admin_token.py  # PowerShell
+
+    # separate MFA sessions for multi-admin smoke tests
+    $env:MINT_ROLE="R-SUPER-ADMIN"; $env:MINT_USER_ID="smoke-super-1"; $env:MINT_SESSION_ID="smoke-super-1"; python scripts/mint_dev_admin_token.py
 """
 import os
 import sys
@@ -37,7 +40,7 @@ region_ids = [v for v in os.environ.get("MINT_REGION_IDS", "").split(",") if v]
 
 token = create_access_token(
     user_id=os.environ.get("MINT_USER_ID", "smoke-" + role.lower()),
-    session_id="smoke-session",
+    session_id=os.environ.get("MINT_SESSION_ID", "smoke-session"),
     roles=[role],
     organization_ids=org_ids,
     region_ids=region_ids,

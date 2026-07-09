@@ -127,6 +127,7 @@ ADMIN_MFA_PATHS = {
     "confirm": f"{ADMIN_MFA_BASE_PATH}/confirm",
     "verify": f"{ADMIN_MFA_BASE_PATH}/verify",
     "recover": f"{ADMIN_MFA_BASE_PATH}/recover",
+    "recovery_enroll": f"{ADMIN_MFA_BASE_PATH}/recovery/enroll",
 }
 HIGH_RISK_REQUESTS_COLLECTION_PATH = "/api/v1/admin/high-risk-requests"
 HIGH_RISK_DECISION_ACTIONS = {"approve", "reject"}
@@ -199,6 +200,11 @@ def _handle_request(event, repository, proposal_repository, monthly_repository=N
             account_name = principal.get("claims", {}).get("email") or principal["userId"]
             enrollment = service.enroll(principal, account_name)
             _record_audit(audit_repository, principal, "admin_mfa.enroll", "admin_mfa", principal["userId"], _now_iso())
+            return json_response(200, {"enrollment": enrollment})
+        if method == "POST" and path == ADMIN_MFA_PATHS["recovery_enroll"]:
+            account_name = principal.get("claims", {}).get("email") or principal["userId"]
+            enrollment = service.recovery_enroll(principal, account_name)
+            _record_audit(audit_repository, principal, "admin_mfa.recovery_enroll", "admin_mfa", principal["userId"], _now_iso())
             return json_response(200, {"enrollment": enrollment})
         if method == "POST" and path == ADMIN_MFA_PATHS["confirm"]:
             result = service.confirm(principal, _required_mfa_value(payload, "code"))
@@ -1236,7 +1242,7 @@ def _record_sensitive_failure_audit(event, audit_repository, error):
         resource_id = high_risk_id
     elif method == "POST" and path in ADMIN_MFA_PATHS.values():
         mfa_action = next((name for name, route in ADMIN_MFA_PATHS.items() if route == path), None)
-        if mfa_action in {"enroll", "confirm", "verify", "recover"}:
+        if mfa_action in {"enroll", "confirm", "verify", "recover", "recovery_enroll"}:
             action = f"admin_mfa.{mfa_action}"
             resource_type = "admin_mfa"
 
