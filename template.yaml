@@ -29,7 +29,7 @@ Parameters:
     Description: Public image CDN base URL for small-city image resolution. Override per environment.
   AgentCoreRuntimeArn:
     Type: String
-    Default: arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/LovvAgentCore_LovvAgentV1-PumZyEGRsT
+    Default: arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/LovvAgentCore_LovvAgentV2-cy3tYk7nV4
     Description: Bedrock AgentCore runtime ARN used by the recommendation Lambda.
   OpenRouteServiceApiKey:
     Type: String
