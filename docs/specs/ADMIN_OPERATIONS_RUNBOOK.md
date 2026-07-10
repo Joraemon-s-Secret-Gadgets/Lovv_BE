@@ -104,6 +104,14 @@ best-effort다. 고위험 변경의 성공 감사는 업무 변경과 동일 트
 조회: `GET /api/v1/admin/audit-logs` (R-ADMIN 전용). 필터 쿼리: `action`, `resourceType`,
 `result`, `actorUserId`, `limit`(최대 50).
 
+목록 응답은 기존 `actorUserId`, `resourceType`, `resourceId`를 유지하면서 표시용 optional 필드를 함께 반환한다.
+
+- `actorDisplayName`: 사용자 `display_name` 또는 `nickname`. 비활성/탈퇴 상태 사용자는 `탈퇴/삭제 사용자`.
+- `actorEmail`: 활성 사용자 이메일. 감사 로그 조회 권한이 있는 R-ADMIN에게는 관리자 사용자 목록 API와 동일한 수준으로 노출한다. 비활성/탈퇴 상태 사용자는 `null`.
+- `resourceDisplayName`: 리소스별 표시명. 데이터 제안은 `title`/`proposal_code`, 고위험 요청은 `operation_type`/사유 요약, 관리자 MFA는 `관리자 추가 인증`을 우선 제공한다. 공지, 추천 정책, 월간 후보, 반영 잡도 가능한 경우 제목·도시명·작업 타입을 제공한다.
+
+표시용 조인은 best-effort다. 사용자 또는 리소스 조인이 실패하거나 대상 행이 없으면 감사 로그 목록 조회 자체는 성공하고 해당 표시용 필드만 `null`로 둔다. 물리 삭제로 `admin_audit_logs.actor_user_id`가 `NULL`이 된 과거 행은 스키마상 원본 actor ID를 복원할 수 없으므로 기존 `actorUserId` 값도 `null`이다.
+
 ## 5. 모니터링
 
 별도 모니터링 인프라를 두지 않고, 다음 두 가지를 1차 모니터링 표면으로 사용한다.

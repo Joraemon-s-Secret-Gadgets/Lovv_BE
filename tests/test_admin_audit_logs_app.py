@@ -128,7 +128,13 @@ class AuditLogApiTests(unittest.TestCase):
         response = self._call("GET", AUDIT, context=admin_context())
         self.assertEqual(response["statusCode"], 200)
         items = json.loads(response["body"])["items"]
-        self.assertTrue(any(item["action"] == "data_proposal.approve" for item in items))
+        item = next(item for item in items if item["action"] == "data_proposal.approve")
+        self.assertEqual(item["actorUserId"], "admin-1")
+        self.assertEqual(item["resourceType"], "data_proposal")
+        self.assertEqual(item["resourceId"], proposal_id)
+        self.assertIn("actorDisplayName", item)
+        self.assertIn("actorEmail", item)
+        self.assertIn("resourceDisplayName", item)
 
     def test_audit_log_list_filters_by_action(self):
         proposal_id = self._seed_approved()
@@ -138,6 +144,30 @@ class AuditLogApiTests(unittest.TestCase):
         items = json.loads(response["body"])["items"]
         self.assertTrue(items)
         self.assertTrue(all(item["action"] == "notice.create" for item in items))
+
+    def test_audit_log_list_returns_optional_display_fields_when_repository_supplies_them(self):
+        self.audit.entries.append({
+            "id": "audit-display-1",
+            "occurredAt": "2026-07-10T00:00:00Z",
+            "actorUserId": "admin-1",
+            "actorDisplayName": "Admin One",
+            "actorEmail": "admin@example.com",
+            "rolesSnapshot": ["R-ADMIN"],
+            "action": "data_proposal.approve",
+            "resourceType": "data_proposal",
+            "resourceId": "proposal-1",
+            "resourceDisplayName": "Gangneung Coffee Festival (PROP-000001)",
+            "result": "succeeded",
+            "reasonCode": None,
+            "afterSummary": {"status": "approved"},
+            "metadata": {},
+        })
+        response = self._call("GET", AUDIT, context=admin_context())
+        self.assertEqual(response["statusCode"], 200)
+        item = json.loads(response["body"])["items"][0]
+        self.assertEqual(item["actorDisplayName"], "Admin One")
+        self.assertEqual(item["actorEmail"], "admin@example.com")
+        self.assertEqual(item["resourceDisplayName"], "Gangneung Coffee Festival (PROP-000001)")
 
 
 if __name__ == "__main__":
