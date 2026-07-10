@@ -701,6 +701,14 @@ Resources:
             Path: /api/v1/admin/security/mfa/recover
             Auth:
               Authorizer: LovvTokenAuthorizer
+        AdminMfaRecoveryEnroll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/admin/security/mfa/recovery/enroll
+            Auth:
+              Authorizer: LovvTokenAuthorizer
         AdminCreateDataProposal:
           Type: HttpApi
           Properties:
