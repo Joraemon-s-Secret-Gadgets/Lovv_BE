@@ -105,22 +105,25 @@ Lovv_BE/
 배포하기 전 로컬 환경에서 백엔드 함수와 API 흐름을 검증할 수 있습니다.
 
 ```powershell
-# 1. unittest 기반 백엔드 단위 테스트 수행
+# 1. Lambda 런타임/로컬 개발 의존성 설치
+python -m pip install -r src/requirements.txt -r requirements-dev.txt
+
+# 2. unittest 기반 백엔드 단위 테스트 수행
 $env:PYTHONPATH='src'
 python -m unittest
 
-# 2. 관리자 MFA/고위험 승인 핵심 테스트
+# 3. 관리자 MFA/고위험 승인 핵심 테스트
 python -m unittest tests.test_admin_high_risk_app
 python -m unittest tests.test_admin_mfa_app.AdminMfaAppTest.test_admin_read_routes_need_role_only_and_mfa_status_is_accessible
 
-# 3. 로컬 API 스모크 테스트 (외부 API Mocking을 통한 핸들러 동작 점검)
+# 4. 로컬 API 스모크 테스트 (외부 API Mocking을 통한 핸들러 동작 점검)
 python scripts/local_api_smoke.py
 
-# 4. AWS SAM 템플릿 검증 및 린팅
+# 5. AWS SAM 템플릿 검증 및 린팅
 sam validate
 sam validate --lint
 
-# 5. SAM 빌드 실행 (Lambda 모듈 패키징)
+# 6. SAM 빌드 실행 (Lambda 모듈 패키징)
 sam build
 ```
 

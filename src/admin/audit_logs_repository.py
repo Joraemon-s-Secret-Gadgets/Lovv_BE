@@ -60,9 +60,42 @@ def build_audit_entry(
 
 
 class RdsDataAuditLogRepository:
-    def __init__(self, rds_client=None, table=None):
+    def __init__(
+        self,
+        rds_client=None,
+        table=None,
+        users_table=None,
+        proposals_table=None,
+        monthly_destinations_table=None,
+        publish_jobs_table=None,
+        notices_table=None,
+        policies_table=None,
+        high_risk_requests_table=None,
+    ):
         self.rds = rds_client or create_database_client()
         self.table = table or os.environ.get("ADMIN_AUDIT_LOGS_TABLE_NAME", "admin_audit_logs")
+        self.users_table = users_table or os.environ.get("USERS_TABLE_NAME", "users")
+        self.proposals_table = proposals_table or os.environ.get(
+            "ADMIN_DATA_PROPOSALS_TABLE_NAME",
+            "admin_data_proposals",
+        )
+        self.monthly_destinations_table = monthly_destinations_table or os.environ.get(
+            "MONTHLY_CURATED_DESTINATIONS_TABLE_NAME",
+            "monthly_curated_destinations",
+        )
+        self.publish_jobs_table = publish_jobs_table or os.environ.get(
+            "ADMIN_PUBLISH_JOBS_TABLE_NAME",
+            "admin_publish_jobs",
+        )
+        self.notices_table = notices_table or os.environ.get("ADMIN_NOTICES_TABLE_NAME", "admin_notices")
+        self.policies_table = policies_table or os.environ.get(
+            "ADMIN_RECOMMENDATION_POLICIES_TABLE_NAME",
+            "admin_recommendation_policies",
+        )
+        self.high_risk_requests_table = high_risk_requests_table or os.environ.get(
+            "ADMIN_HIGH_RISK_REQUESTS_TABLE_NAME",
+            "admin_high_risk_change_requests",
+        )
 
     @classmethod
     def from_env(cls):
@@ -119,7 +152,120 @@ class RdsDataAuditLogRepository:
             """,
             {**params, "limit": int(limit)},
         )
-        return [_entry_from_row(row) for row in rows]
+        entries = [_entry_from_row(row) for row in rows]
+        self._hydrate_display_fields(entries)
+        return entries
+
+    def _hydrate_display_fields(self, entries):
+        actor_map = self._fetch_actor_display_map({entry.get("actorUserId") for entry in entries})
+        resource_maps = self._fetch_resource_display_maps(entries)
+        for entry in entries:
+            actor = actor_map.get(entry.get("actorUserId")) or {}
+            entry["actorDisplayName"] = actor.get("displayName")
+            entry["actorEmail"] = actor.get("email")
+
+            resource_type = entry.get("resourceType")
+            if resource_type == "admin_mfa":
+                entry["resourceDisplayName"] = "관리자 추가 인증"
+                continue
+            entry["resourceDisplayName"] = (
+                resource_maps.get(resource_type, {}).get(entry.get("resourceId"))
+                if resource_type
+                else None
+            )
+
+    def _fetch_actor_display_map(self, actor_ids):
+        actor_ids = _non_empty_strings(actor_ids)
+        if not actor_ids:
+            return {}
+        try:
+            rows = self.rds.fetch_all(
+                f"""
+                SELECT id, display_name, nickname, email, status
+                FROM {self.users_table}
+                WHERE id IN ({_placeholders("actor", actor_ids)})
+                """,
+                _params("actor", actor_ids),
+            )
+        except Exception as error:
+            LOGGER.warning("Failed to hydrate admin audit actor display fields: %s", error)
+            return {}
+        return {str(row.get("id")): _actor_display_from_row(row) for row in rows}
+
+    def _fetch_resource_display_maps(self, entries):
+        by_type = {}
+        for entry in entries:
+            resource_type = entry.get("resourceType")
+            resource_id = entry.get("resourceId")
+            if resource_type and resource_id:
+                by_type.setdefault(resource_type, set()).add(resource_id)
+
+        display_maps = {}
+        display_maps["data_proposal"] = self._fetch_display_map(
+            "data_proposal",
+            self.proposals_table,
+            by_type.get("data_proposal"),
+            "id, title, proposal_code",
+            lambda row: _join_display(row.get("title"), row.get("proposal_code")),
+        )
+        display_maps["monthly_destination"] = self._fetch_display_map(
+            "monthly_destination",
+            self.monthly_destinations_table,
+            by_type.get("monthly_destination"),
+            "id, city_name, curation_month",
+            lambda row: _join_display(row.get("city_name"), row.get("curation_month")),
+        )
+        display_maps["publish_job"] = self._fetch_display_map(
+            "publish_job",
+            self.publish_jobs_table,
+            by_type.get("publish_job"),
+            "id, job_type, status",
+            lambda row: _join_display(row.get("job_type"), row.get("status")),
+        )
+        display_maps["notice"] = self._fetch_display_map(
+            "notice",
+            self.notices_table,
+            by_type.get("notice"),
+            "id, title",
+            lambda row: _clean_text(row.get("title")),
+        )
+        display_maps["recommendation_policy"] = self._fetch_display_map(
+            "recommendation_policy",
+            self.policies_table,
+            by_type.get("recommendation_policy"),
+            "id, title, policy_key",
+            lambda row: _clean_text(row.get("title")) or _clean_text(row.get("policy_key")),
+        )
+        display_maps["high_risk_request"] = self._fetch_display_map(
+            "high_risk_request",
+            self.high_risk_requests_table,
+            by_type.get("high_risk_request"),
+            "id, operation_type, reason",
+            lambda row: _join_display(row.get("operation_type"), _truncate(row.get("reason"), 80)),
+        )
+        return display_maps
+
+    def _fetch_display_map(self, resource_type, table, resource_ids, columns, display_fn):
+        resource_ids = _non_empty_strings(resource_ids)
+        if not resource_ids:
+            return {}
+        try:
+            rows = self.rds.fetch_all(
+                f"""
+                SELECT {columns}
+                FROM {table}
+                WHERE id IN ({_placeholders("resource", resource_ids)})
+                """,
+                _params("resource", resource_ids),
+            )
+        except Exception as error:
+            LOGGER.warning("Failed to hydrate admin audit %s display fields: %s", resource_type, error)
+            return {}
+        return {
+            str(row.get("id")): display_fn(row)
+            for row in rows
+            if row.get("id") is not None and display_fn(row) is not None
+        }
 
 
 class InMemoryAuditLogRepository:
@@ -170,6 +316,8 @@ def _entry_from_row(row):
         "id": row.get("id"),
         "occurredAt": row.get("occurred_at"),
         "actorUserId": row.get("actor_user_id"),
+        "actorDisplayName": row.get("actor_display_name"),
+        "actorEmail": row.get("actor_email"),
         "sessionId": row.get("session_id"),
         "rolesSnapshot": json_loads(row.get("roles_snapshot"), default=[]),
         "organizationIdsSnapshot": json_loads(row.get("organization_ids_snapshot"), default=[]),
@@ -177,6 +325,7 @@ def _entry_from_row(row):
         "action": row.get("action"),
         "resourceType": row.get("resource_type"),
         "resourceId": row.get("resource_id"),
+        "resourceDisplayName": row.get("resource_display_name"),
         "result": row.get("result"),
         "reasonCode": row.get("reason_code"),
         "beforeSummary": json_loads(row.get("before_summary_json"), default={}),
@@ -184,3 +333,49 @@ def _entry_from_row(row):
         "metadata": json_loads(row.get("metadata_json"), default={}),
         "createdAt": row.get("created_at"),
     }
+
+
+def _non_empty_strings(values):
+    return sorted({str(value) for value in (values or []) if value not in (None, "")})
+
+
+def _placeholders(prefix, values):
+    return ", ".join(f":{prefix}_{index}" for index, _ in enumerate(values))
+
+
+def _params(prefix, values):
+    return {f"{prefix}_{index}": value for index, value in enumerate(values)}
+
+
+def _actor_display_from_row(row):
+    status = row.get("status") or "active"
+    if status != "active":
+        return {"displayName": "탈퇴/삭제 사용자", "email": None}
+    return {
+        "displayName": _clean_text(row.get("display_name")) or _clean_text(row.get("nickname")),
+        "email": _clean_text(row.get("email")),
+    }
+
+
+def _join_display(primary, secondary):
+    primary = _clean_text(primary)
+    secondary = _clean_text(secondary)
+    if primary and secondary:
+        return f"{primary} ({secondary})"
+    return primary or secondary
+
+
+def _truncate(value, max_length):
+    value = _clean_text(value)
+    if value is None or len(value) <= max_length:
+        return value
+    return value[: max_length - 3].rstrip() + "..."
+
+
+def _clean_text(value):
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    return value or None
