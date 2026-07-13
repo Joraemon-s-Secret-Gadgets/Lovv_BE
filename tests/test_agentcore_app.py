@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sys
@@ -279,6 +280,8 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertNotIn("request", request_payload)
+        expected_session_id = f"session-{hashlib.sha256(b'frontend-request-1').hexdigest()[:32]}"
+        self.assertEqual(captured["runtimeSessionId"], expected_session_id)
         self.assertEqual(request_payload["session_id"], captured["runtimeSessionId"])
         self.assertEqual(request_payload["recommendation_request_id"], "frontend-request-1")
         self.assertEqual(request_payload["sessionId"], captured["runtimeSessionId"])

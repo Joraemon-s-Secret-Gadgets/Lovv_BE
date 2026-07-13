@@ -120,9 +120,14 @@ def _invoke_bedrock_agent(payload):
         raise ValueError("AgentCore runtime ARN is not configured")
 
     # 1. AgentCore/LangGraph checkpoint 식별자 확인 또는 자동 생성
+    request_id = payload.get("requestId")
     session_id = payload.get("sessionId") or payload.get("threadId")
     if not session_id:
-        session_id = f"session-{uuid.uuid4().hex}"  # 40글자 길이 식별자
+        if isinstance(request_id, str) and request_id.strip():
+            request_digest = hashlib.sha256(request_id.strip().encode("utf-8")).hexdigest()[:32]
+            session_id = f"session-{request_digest}"
+        else:
+            session_id = f"session-{uuid.uuid4().hex}"  # 40글자 길이 식별자
 
     country = payload.get("country")
     trip_type = payload.get("tripType")
@@ -131,7 +136,7 @@ def _invoke_bedrock_agent(payload):
     include_festivals = payload.get("includeFestivals", False)
     destination_id = payload.get("destinationId", "")
     query = payload.get("naturalLanguageQuery", "")
-    request_id = payload.get("requestId") or session_id
+    request_id = request_id or session_id
 
     # 2. Bedrock AgentCore V2에 주입할 표준 요청 페이로드 구조화
     now = datetime.now(timezone.utc)
