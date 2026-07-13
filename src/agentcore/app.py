@@ -375,7 +375,8 @@ def _normalize_payload(body):
         or body.get("softPreferenceQuery")
         or ""
     )
-    normalized["includeFestivals"] = bool(body.get("includeFestivals"))
+    if "includeFestivals" in body:
+        normalized["includeFestivals"] = body["includeFestivals"]
 
     return normalized
 

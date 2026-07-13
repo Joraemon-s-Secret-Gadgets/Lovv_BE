@@ -284,6 +284,33 @@ class SavedPlansAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 201)
 
+    def test_does_not_apply_restaurant_limits_to_manual_non_restaurant_items(self):
+        payload = save_payload(
+            itinerary={
+                "days": [
+                    {
+                        "day": 1,
+                        "items": [
+                            {
+                                "itemId": f"manual-attraction-{index}",
+                                "sortOrder": index,
+                                "title": f"수동 추가 관광지 {index}",
+                                "body": "사용자가 추가한 비음식점 장소",
+                                "itemType": "attraction",
+                                "source": "manual",
+                                "lockLevel": "user_added",
+                            }
+                            for index in range(1, 5)
+                        ],
+                    }
+                ]
+            },
+        )
+
+        response = handle_request(make_event("POST", "/api/v1/me/itineraries", payload), repository=self.repository)
+
+        self.assertEqual(response["statusCode"], 201)
+
     def test_rejects_raw_chat_history_fields(self):
         response = handle_request(
             make_event("POST", "/api/v1/me/itineraries", save_payload(messages=[{"role": "user"}])),

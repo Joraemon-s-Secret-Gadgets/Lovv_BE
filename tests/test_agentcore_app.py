@@ -96,6 +96,23 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertEqual(response["statusCode"], 400)
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
 
+    def test_rejects_create_payload_without_include_festivals(self):
+        response = handle_request(
+            make_event(
+                {
+                    "entryType": "create",
+                    "country": "KR",
+                    "tripType": "2d1n",
+                    "themes": ["food_local"],
+                }
+            )
+        )
+        body = json.loads(response["body"])
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(body["error"]["message"], "includeFestivals is required")
+
     def test_agentcore_failure_returns_error_without_savable_mock_or_internal_detail(self):
         with patch.dict(os.environ, {"MOCK_RECOMMENDATION": "false"}, clear=False):
             with patch("agentcore.app._invoke_bedrock_agent", side_effect=RuntimeError("secret backend failure")):

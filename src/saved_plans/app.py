@@ -270,13 +270,7 @@ def _validate_user_added_restaurants(itinerary):
 
 
 def _is_user_added_restaurant(entry):
-    return (
-        entry.get("wishlistRestaurantId")
-        or entry.get("wishlist_restaurant_id")
-        or entry.get("source") in {"wishlist", "manual"}
-        or entry.get("lockLevel") == "user_added"
-        or entry.get("lock_level") == "user_added"
-    )
+    return bool(entry.get("wishlistRestaurantId") or entry.get("wishlist_restaurant_id"))
 
 
 def _restaurant_identity(entry):
