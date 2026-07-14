@@ -14,7 +14,7 @@ from shared.logger import Tag, get_logger
 LOGGER = get_logger(__name__)
 DEFAULT_ORS_BASE_URL = "https://api.openrouteservice.org"
 DEFAULT_ORS_PROFILE = "driving-car"
-DEFAULT_ORS_TIMEOUT_SECONDS = 4.0
+DEFAULT_ORS_TIMEOUT_SECONDS = 2.0
 MAX_ROUTE_ENRICHMENT_WORKERS = 4
 _ssm_client = None
 _ssm_parameter_cache = {}

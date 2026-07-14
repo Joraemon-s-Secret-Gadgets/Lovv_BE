@@ -46,7 +46,7 @@ Parameters:
     Description: OpenRouteService directions profile used for itinerary route enrichment.
   OpenRouteServiceTimeoutSeconds:
     Type: String
-    Default: '4'
+    Default: '2'
     Description: OpenRouteService request timeout in seconds. Route enrichment is skipped on timeout/failure.
   AuthTokenSigningSecretArn:
     Type: String

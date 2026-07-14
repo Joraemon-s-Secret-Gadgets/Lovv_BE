@@ -46,7 +46,7 @@ class AgentCoreRoutingTest(unittest.TestCase):
             self.assertIn("/v2/directions/foot-walking/geojson", url)
             self.assertEqual(body["coordinates"], [[128.947, 37.771], [128.908, 37.805]])
             self.assertTrue(body["instructions"])
-            self.assertEqual(timeout_seconds, 4.0)
+            self.assertEqual(timeout_seconds, 2.0)
             return ors_response
 
         with patch.dict(
@@ -54,7 +54,7 @@ class AgentCoreRoutingTest(unittest.TestCase):
             {
                 "OPENROUTESERVICE_API_KEY": "test-ors-key",
                 "OPENROUTESERVICE_PROFILE": "foot-walking",
-                "OPENROUTESERVICE_TIMEOUT_SECONDS": "4",
+                "OPENROUTESERVICE_TIMEOUT_SECONDS": "2",
             },
             clear=False,
         ):
