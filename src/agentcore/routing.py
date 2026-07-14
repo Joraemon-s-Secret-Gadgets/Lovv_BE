@@ -1,32 +1,28 @@
 # @file src/agentcore/routing.py
-# @description Optional OpenRouteService itinerary route enrichment for AgentCore results.
-# @lastModified 2026-06-25
+# @description Optional Kakao Mobility itinerary route enrichment for AgentCore results.
+# @lastModified 2026-07-14
 
 import json
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib import request
+from urllib import parse, request
 
 from shared.logger import Tag, get_logger
 
 
 LOGGER = get_logger(__name__)
-DEFAULT_ORS_BASE_URL = "https://api.openrouteservice.org"
-DEFAULT_ORS_PROFILE = "driving-car"
-DEFAULT_ORS_TIMEOUT_SECONDS = 2.0
+DEFAULT_KAKAO_MOBILITY_BASE_URL = "https://apis-navi.kakaomobility.com"
+DEFAULT_KAKAO_MOBILITY_TIMEOUT_SECONDS = 3.0
+MAX_KAKAO_ROUTE_POINTS = 7
 MAX_ROUTE_ENRICHMENT_WORKERS = 4
 _ssm_client = None
 _ssm_parameter_cache = {}
 
 
 def enrich_itinerary_routes(itinerary):
-    """Attach ORS route geometry to itinerary days when an API key is configured.
-
-    This is an optional enhancement. A missing key, insufficient coordinates, or
-    upstream ORS failure must not make an otherwise valid recommendation fail.
-    """
-    api_key = _openrouteservice_api_key()
+    """Attach Kakao Mobility route geometry without blocking itinerary creation."""
+    api_key = _kakao_mobility_api_key()
     if not api_key or not isinstance(itinerary, dict):
         return itinerary
 
@@ -34,11 +30,10 @@ def enrich_itinerary_routes(itinerary):
     if not isinstance(days, list):
         return itinerary
 
-    profile = (os.environ.get("OPENROUTESERVICE_PROFILE") or DEFAULT_ORS_PROFILE).strip() or DEFAULT_ORS_PROFILE
-    base_url = (os.environ.get("OPENROUTESERVICE_BASE_URL") or DEFAULT_ORS_BASE_URL).strip().rstrip("/")
+    base_url = (os.environ.get("KAKAO_MOBILITY_BASE_URL") or DEFAULT_KAKAO_MOBILITY_BASE_URL).strip().rstrip("/")
     timeout_seconds = _timeout_seconds()
-
     route_jobs = []
+
     for day in days:
         if not isinstance(day, dict):
             continue
@@ -47,10 +42,8 @@ def enrich_itinerary_routes(itinerary):
             continue
 
         points = _valid_route_points(items)
-        if len(points) < 2:
-            continue
-
-        route_jobs.append((day, items, points))
+        if len(points) >= 2:
+            route_jobs.append((day, items, points))
 
     if not route_jobs:
         return itinerary
@@ -61,7 +54,6 @@ def enrich_itinerary_routes(itinerary):
             executor.submit(
                 _fetch_route,
                 base_url=base_url,
-                profile=profile,
                 api_key=api_key,
                 coordinates=[point["coordinate"] for point in points],
                 timeout_seconds=timeout_seconds,
@@ -72,79 +64,129 @@ def enrich_itinerary_routes(itinerary):
         for future in as_completed(futures):
             day, items, points = futures[future]
             try:
-                ors_result = future.result()
+                route_result = future.result()
             except Exception as error:
                 LOGGER.warning(
                     Tag.PLAN,
-                    "OpenRouteService route enrichment skipped day=%s pointCount=%s errorType=%s",
+                    "Kakao Mobility route enrichment skipped day=%s pointCount=%s errorType=%s",
                     day.get("day"),
                     len(points),
                     error.__class__.__name__,
                 )
                 continue
 
-            if ors_result:
-                day["route"] = ors_result
-                _apply_leg_summaries(items, points, ors_result.get("segments") or [])
+            if route_result:
+                day["route"] = route_result
+                _apply_leg_summaries(items, points, route_result.get("segments") or [])
 
     return itinerary
 
 
-def _fetch_route(base_url, profile, api_key, coordinates, timeout_seconds):
-    url = f"{base_url}/v2/directions/{profile}/geojson"
-    body = {
-        "coordinates": coordinates,
-        "instructions": True,
-        "geometry_simplify": True,
-    }
-    response = _post_json(url, api_key, body, timeout_seconds)
-    feature = _first_feature(response)
-    if not feature:
-        return None
+def _fetch_route(base_url, api_key, coordinates, timeout_seconds):
+    chunks = []
+    start_index = 0
+    while start_index < len(coordinates) - 1:
+        end_index = min(start_index + MAX_KAKAO_ROUTE_POINTS, len(coordinates))
+        chunk = _fetch_route_chunk(
+            base_url=base_url,
+            api_key=api_key,
+            coordinates=coordinates[start_index:end_index],
+            timeout_seconds=timeout_seconds,
+        )
+        if not chunk:
+            return None
+        chunks.append(chunk)
+        start_index = end_index - 1
 
-    geometry = feature.get("geometry") if isinstance(feature, dict) else None
-    properties = feature.get("properties") if isinstance(feature, dict) else None
-    summary = properties.get("summary") if isinstance(properties, dict) else None
-    segments = properties.get("segments") if isinstance(properties, dict) else None
-
-    if not isinstance(geometry, dict) or not isinstance(summary, dict):
-        return None
+    geometry_coordinates = []
+    segments = []
+    for chunk in chunks:
+        _extend_unique_coordinates(geometry_coordinates, chunk["geometry"]["coordinates"])
+        segments.extend(chunk["segments"])
 
     return {
-        "provider": "openrouteservice",
-        "profile": profile,
-        "geometry": {
-            "type": geometry.get("type") or "LineString",
-            "coordinates": geometry.get("coordinates") or [],
-        },
-        "distanceMeters": int(float(summary.get("distance") or 0)),
-        "durationSeconds": int(float(summary.get("duration") or 0)),
-        "segments": _normalized_segments(segments),
+        "provider": "kakao-mobility",
+        "profile": "driving-car",
+        "geometry": {"type": "LineString", "coordinates": geometry_coordinates},
+        "distanceMeters": sum(segment["distanceMeters"] for segment in segments),
+        "durationSeconds": sum(segment["durationSeconds"] for segment in segments),
+        "segments": segments,
     }
 
 
-def _post_json(url, api_key, body, timeout_seconds):
-    encoded_body = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+def _fetch_route_chunk(base_url, api_key, coordinates, timeout_seconds):
+    query = {
+        "origin": _coordinate_param(coordinates[0]),
+        "destination": _coordinate_param(coordinates[-1]),
+        "priority": "RECOMMEND",
+        "summary": "false",
+    }
+    if len(coordinates) > 2:
+        query["waypoints"] = "|".join(_coordinate_param(coordinate) for coordinate in coordinates[1:-1])
+
+    url = f"{base_url}/v1/directions?{parse.urlencode(query)}"
+    response = _get_json(url, api_key, timeout_seconds)
+    route = _first_successful_route(response)
+    if not route:
+        return None
+
+    sections = route.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return None
+
+    geometry_coordinates = []
+    segments = []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        segments.append(
+            {
+                "distanceMeters": int(float(section.get("distance") or 0)),
+                "durationSeconds": int(float(section.get("duration") or 0)),
+            }
+        )
+        for road in section.get("roads") or []:
+            if not isinstance(road, dict):
+                continue
+            vertexes = road.get("vertexes")
+            if not isinstance(vertexes, list):
+                continue
+            road_coordinates = []
+            for index in range(0, len(vertexes) - 1, 2):
+                longitude = _number_or_none(vertexes[index])
+                latitude = _number_or_none(vertexes[index + 1])
+                if longitude is not None and latitude is not None:
+                    road_coordinates.append([longitude, latitude])
+            _extend_unique_coordinates(geometry_coordinates, road_coordinates)
+
+    if not geometry_coordinates or not segments:
+        return None
+    return {
+        "geometry": {"type": "LineString", "coordinates": geometry_coordinates},
+        "segments": segments,
+    }
+
+
+def _get_json(url, api_key, timeout_seconds):
     http_request = request.Request(
         url,
-        data=encoded_body,
         headers={
-            "Authorization": api_key,
+            "Authorization": f"KakaoAK {api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/geo+json",
+            "Accept": "application/json",
         },
-        method="POST",
+        method="GET",
     )
     with request.urlopen(http_request, timeout=timeout_seconds) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _openrouteservice_api_key():
-    direct_key = (os.environ.get("OPENROUTESERVICE_API_KEY") or "").strip()
+def _kakao_mobility_api_key():
+    direct_key = (os.environ.get("KAKAO_MOBILITY_REST_API_KEY") or "").strip()
     if direct_key:
         return direct_key
 
-    parameter_name = (os.environ.get("OPENROUTESERVICE_API_KEY_SSM_NAME") or "").strip()
+    parameter_name = (os.environ.get("KAKAO_MOBILITY_REST_API_KEY_SSM_NAME") or "").strip()
     if not parameter_name:
         return ""
     try:
@@ -152,7 +194,7 @@ def _openrouteservice_api_key():
     except Exception as error:
         LOGGER.warning(
             Tag.PLAN,
-            "OpenRouteService key lookup skipped source=ssm errorType=%s",
+            "Kakao Mobility key lookup skipped source=ssm errorType=%s",
             error.__class__.__name__,
         )
         return ""
@@ -202,30 +244,26 @@ def _apply_leg_summaries(items, points, segments):
             item["moveDistanceMeters"] = distance_meters
 
 
-def _normalized_segments(segments):
-    if not isinstance(segments, list):
-        return []
-    normalized = []
-    for segment in segments:
-        if not isinstance(segment, dict):
-            continue
-        normalized.append(
-            {
-                "distanceMeters": int(float(segment.get("distance") or 0)),
-                "durationSeconds": int(float(segment.get("duration") or 0)),
-            }
-        )
-    return normalized
-
-
-def _first_feature(response):
+def _first_successful_route(response):
     if not isinstance(response, dict):
         return None
-    features = response.get("features")
-    if not isinstance(features, list) or not features:
+    routes = response.get("routes")
+    if not isinstance(routes, list):
         return None
-    feature = features[0]
-    return feature if isinstance(feature, dict) else None
+    for route in routes:
+        if isinstance(route, dict) and route.get("result_code") == 0:
+            return route
+    return None
+
+
+def _coordinate_param(coordinate):
+    return f"{coordinate[0]},{coordinate[1]}"
+
+
+def _extend_unique_coordinates(target, coordinates):
+    for coordinate in coordinates:
+        if not target or target[-1] != coordinate:
+            target.append(coordinate)
 
 
 def _number_or_none(value):
@@ -246,13 +284,13 @@ def _number_or_none(value):
 
 
 def _timeout_seconds():
-    raw_value = os.environ.get("OPENROUTESERVICE_TIMEOUT_SECONDS")
+    raw_value = os.environ.get("KAKAO_MOBILITY_TIMEOUT_SECONDS")
     if not raw_value:
-        return DEFAULT_ORS_TIMEOUT_SECONDS
+        return DEFAULT_KAKAO_MOBILITY_TIMEOUT_SECONDS
     try:
         value = float(raw_value)
     except ValueError:
-        return DEFAULT_ORS_TIMEOUT_SECONDS
+        return DEFAULT_KAKAO_MOBILITY_TIMEOUT_SECONDS
     if value <= 0:
-        return DEFAULT_ORS_TIMEOUT_SECONDS
+        return DEFAULT_KAKAO_MOBILITY_TIMEOUT_SECONDS
     return min(value, 10.0)

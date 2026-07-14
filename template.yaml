@@ -31,23 +31,19 @@ Parameters:
     Type: String
     Default: arn:aws:bedrock-agentcore:us-east-1:925273580929:runtime/LovvAgentCore_LovvAgentV2-cy3tYk7nV4
     Description: Bedrock AgentCore runtime ARN used by the recommendation Lambda.
-  OpenRouteServiceApiKey:
+  KakaoMobilityRestApiKey:
     Type: String
     Default: ''
     NoEcho: true
-    Description: Optional OpenRouteService API key used server-side to enrich AgentCore itinerary routes.
-  OpenRouteServiceApiKeySsmName:
+    Description: Optional Kakao Mobility REST API key used server-side to enrich AgentCore itinerary routes.
+  KakaoMobilityRestApiKeySsmName:
     Type: String
-    Default: /lovv/dev/openrouteservice/api_key
-    Description: Optional SSM SecureString parameter name for the OpenRouteService API key. The key value is read at runtime.
-  OpenRouteServiceProfile:
+    Default: ''
+    Description: Optional SSM SecureString parameter name for the Kakao Mobility REST API key. The key value is read at runtime.
+  KakaoMobilityTimeoutSeconds:
     Type: String
-    Default: driving-car
-    Description: OpenRouteService directions profile used for itinerary route enrichment.
-  OpenRouteServiceTimeoutSeconds:
-    Type: String
-    Default: '2'
-    Description: OpenRouteService request timeout in seconds. Route enrichment is skipped on timeout/failure.
+    Default: '3'
+    Description: Kakao Mobility request timeout in seconds. Route enrichment is skipped on timeout/failure.
   AuthTokenSigningSecretArn:
     Type: String
     Description: Secrets Manager ARN for JWT signing secret.
@@ -257,7 +253,7 @@ Globals:
 
 Conditions:
   CreateCognitoPoC: !Equals [!Ref EnableCognitoPoC, 'true']
-  HasOpenRouteServiceSsmParameter: !Not [!Equals [!Ref OpenRouteServiceApiKeySsmName, '']]
+  HasKakaoMobilitySsmParameter: !Not [!Equals [!Ref KakaoMobilityRestApiKeySsmName, '']]
 
 Resources:
   LovvHttpApi:
@@ -1062,10 +1058,9 @@ Resources:
       Environment:
         Variables:
           BEDROCK_AGENT_ARN: !Ref AgentCoreRuntimeArn
-          OPENROUTESERVICE_API_KEY: !Ref OpenRouteServiceApiKey
-          OPENROUTESERVICE_API_KEY_SSM_NAME: !Ref OpenRouteServiceApiKeySsmName
-          OPENROUTESERVICE_PROFILE: !Ref OpenRouteServiceProfile
-          OPENROUTESERVICE_TIMEOUT_SECONDS: !Ref OpenRouteServiceTimeoutSeconds
+          KAKAO_MOBILITY_REST_API_KEY: !Ref KakaoMobilityRestApiKey
+          KAKAO_MOBILITY_REST_API_KEY_SSM_NAME: !Ref KakaoMobilityRestApiKeySsmName
+          KAKAO_MOBILITY_TIMEOUT_SECONDS: !Ref KakaoMobilityTimeoutSeconds
           CORS_ALLOW_ORIGIN: !Select [0, !Ref AllowedCorsOrigin]
           CORS_ALLOW_ORIGINS: !Join [",", !Ref AllowedCorsOrigin]
       Policies:
@@ -1077,11 +1072,11 @@ Resources:
                 - !Ref AgentCoreRuntimeArn
                 - !Sub "${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT"
             - !If
-              - HasOpenRouteServiceSsmParameter
+              - HasKakaoMobilitySsmParameter
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
-                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${OpenRouteServiceApiKeySsmName}
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${KakaoMobilityRestApiKeySsmName}
               - !Ref AWS::NoValue
       Events:
         CreateRecommendation:

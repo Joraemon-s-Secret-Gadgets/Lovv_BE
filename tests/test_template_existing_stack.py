@@ -295,23 +295,22 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         reaction_block = block[reaction_path_index : reaction_path_index + 260]
         self.assertIn("Authorizer: LovvTokenAuthorizer", reaction_block)
 
-    def test_agentcore_openrouteservice_key_is_server_side_noecho_parameter(self):
-        self.assertIn("OpenRouteServiceApiKey:", self.template)
-        parameter_index = self.template.index("OpenRouteServiceApiKey:")
+    def test_agentcore_kakao_mobility_key_is_server_side_noecho_parameter(self):
+        self.assertIn("KakaoMobilityRestApiKey:", self.template)
+        parameter_index = self.template.index("KakaoMobilityRestApiKey:")
         self.assertIn("NoEcho: true", self.template[parameter_index : parameter_index + 180])
-        self.assertIn("OpenRouteServiceApiKeySsmName:", self.template)
+        self.assertIn("KakaoMobilityRestApiKeySsmName:", self.template)
 
         agentcore_index = self.template.index("AgentCoreFunction:")
         agentcore_block = self.template[agentcore_index : agentcore_index + 1600]
 
-        self.assertIn("OPENROUTESERVICE_API_KEY: !Ref OpenRouteServiceApiKey", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_API_KEY_SSM_NAME: !Ref OpenRouteServiceApiKeySsmName", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_PROFILE: !Ref OpenRouteServiceProfile", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_TIMEOUT_SECONDS: !Ref OpenRouteServiceTimeoutSeconds", agentcore_block)
-        self.assertIn("HasOpenRouteServiceSsmParameter:", self.template)
-        self.assertIn("- HasOpenRouteServiceSsmParameter", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_REST_API_KEY: !Ref KakaoMobilityRestApiKey", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_REST_API_KEY_SSM_NAME: !Ref KakaoMobilityRestApiKeySsmName", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_TIMEOUT_SECONDS: !Ref KakaoMobilityTimeoutSeconds", agentcore_block)
+        self.assertIn("HasKakaoMobilitySsmParameter:", self.template)
+        self.assertIn("- HasKakaoMobilitySsmParameter", agentcore_block)
         self.assertIn("ssm:GetParameter", agentcore_block)
-        self.assertIn("parameter${OpenRouteServiceApiKeySsmName}", agentcore_block)
+        self.assertIn("parameter${KakaoMobilityRestApiKeySsmName}", agentcore_block)
         self.assertIn("- !Ref AWS::NoValue", agentcore_block)
 
 

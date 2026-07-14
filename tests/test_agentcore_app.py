@@ -154,7 +154,7 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertNotIn("secret backend failure", response["body"])
         self.assertNotIn("saveCompatibility", response["body"])
 
-    def test_agentcore_response_is_enriched_with_openrouteservice_route_when_configured(self):
+    def test_agentcore_response_is_enriched_with_kakao_mobility_route_when_configured(self):
         agentcore_payload = {
             "result": {
                 "destination": {
@@ -183,17 +183,12 @@ class AgentCoreMockAppTest(unittest.TestCase):
             def invoke_agent_runtime(self, **kwargs):
                 return {"response": BytesIO(json.dumps(agentcore_payload).encode("utf-8"))}
 
-        ors_response = {
-            "features": [
+        kakao_response = {
+            "routes": [
                 {
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[128.947, 37.771], [128.908, 37.805]],
-                    },
-                    "properties": {
-                        "summary": {"distance": 4200, "duration": 780},
-                        "segments": [{"distance": 4200, "duration": 780}],
-                    },
+                    "result_code": 0,
+                    "summary": {"distance": 4200, "duration": 780},
+                    "sections": [{"distance": 4200, "duration": 780, "roads": [{"vertexes": [128.947, 37.771, 128.908, 37.805]}]}],
                 }
             ]
         }
@@ -203,12 +198,12 @@ class AgentCoreMockAppTest(unittest.TestCase):
             {
                 "MOCK_RECOMMENDATION": "false",
                 "BEDROCK_AGENT_ARN": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
-                "OPENROUTESERVICE_API_KEY": "test-ors-key",
+                "KAKAO_MOBILITY_REST_API_KEY": "test-kakao-key",
             },
             clear=False,
         ):
             with patch("agentcore.app._get_bedrock_client", return_value=FakeBedrockClient()):
-                with patch("agentcore.routing._post_json", return_value=ors_response):
+                with patch("agentcore.routing._get_json", return_value=kakao_response):
                     response = handle_request(
                         make_event(
                             {
@@ -227,10 +222,10 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertFalse(body["mock"])
-        self.assertEqual(day["route"]["provider"], "openrouteservice")
+        self.assertEqual(day["route"]["provider"], "kakao-mobility")
         self.assertEqual(day["route"]["distanceMeters"], 4200)
         self.assertEqual(day["items"][0]["moveMinutes"], 13)
-        self.assertEqual(body["saveCompatibility"]["payload"]["itinerary"]["days"][0]["route"]["provider"], "openrouteservice")
+        self.assertEqual(body["saveCompatibility"]["payload"]["itinerary"]["days"][0]["route"]["provider"], "kakao-mobility")
         self.assertNotIn("mock", body["itinerary"]["title"].lower())
         self.assertNotIn("mock", body["itinerary"]["summary"].lower())
         self.assertNotIn("mock", body["saveCompatibility"]["payload"]["title"].lower())
