@@ -257,6 +257,7 @@ Globals:
 
 Conditions:
   CreateCognitoPoC: !Equals [!Ref EnableCognitoPoC, 'true']
+  HasOpenRouteServiceSsmParameter: !Not [!Equals [!Ref OpenRouteServiceApiKeySsmName, '']]
 
 Resources:
   LovvHttpApi:
@@ -1075,10 +1076,13 @@ Resources:
               Resource:
                 - !Ref AgentCoreRuntimeArn
                 - !Sub "${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT"
-            - Effect: Allow
-              Action:
-                - ssm:GetParameter
-              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${OpenRouteServiceApiKeySsmName}
+            - !If
+              - HasOpenRouteServiceSsmParameter
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${OpenRouteServiceApiKeySsmName}
+              - !Ref AWS::NoValue
       Events:
         CreateRecommendation:
           Type: HttpApi

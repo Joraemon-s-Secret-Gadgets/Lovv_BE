@@ -302,14 +302,17 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("OpenRouteServiceApiKeySsmName:", self.template)
 
         agentcore_index = self.template.index("AgentCoreFunction:")
-        agentcore_block = self.template[agentcore_index : agentcore_index + 1300]
+        agentcore_block = self.template[agentcore_index : agentcore_index + 1600]
 
         self.assertIn("OPENROUTESERVICE_API_KEY: !Ref OpenRouteServiceApiKey", agentcore_block)
         self.assertIn("OPENROUTESERVICE_API_KEY_SSM_NAME: !Ref OpenRouteServiceApiKeySsmName", agentcore_block)
         self.assertIn("OPENROUTESERVICE_PROFILE: !Ref OpenRouteServiceProfile", agentcore_block)
         self.assertIn("OPENROUTESERVICE_TIMEOUT_SECONDS: !Ref OpenRouteServiceTimeoutSeconds", agentcore_block)
+        self.assertIn("HasOpenRouteServiceSsmParameter:", self.template)
+        self.assertIn("- HasOpenRouteServiceSsmParameter", agentcore_block)
         self.assertIn("ssm:GetParameter", agentcore_block)
         self.assertIn("parameter${OpenRouteServiceApiKeySsmName}", agentcore_block)
+        self.assertIn("- !Ref AWS::NoValue", agentcore_block)
 
 
 class ExistingDataStackSchemaTest(unittest.TestCase):
