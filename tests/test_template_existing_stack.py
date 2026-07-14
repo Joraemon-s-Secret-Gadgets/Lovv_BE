@@ -87,6 +87,23 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             path_index = preferences_block.index(path)
             self.assertIn("Authorizer: LovvTokenAuthorizer", preferences_block[path_index : path_index + 220])
 
+    def test_agentcore_route_calculation_uses_lovv_token_authorizer(self):
+        agentcore_index = self.template.index("AgentCoreFunction:")
+        agentcore_block = self.template[agentcore_index : self.template.index("Outputs:")]
+        path = "Path: /api/v1/routes"
+        path_index = agentcore_block.index(path)
+
+        self.assertIn("Authorizer: LovvTokenAuthorizer", agentcore_block[path_index : path_index + 220])
+
+    def test_agentcore_route_calculation_is_throttled(self):
+        route_settings_index = self.template.index("RouteSettings:")
+        route_settings_block = self.template[route_settings_index : self.template.index("CorsConfiguration:")]
+        route_index = route_settings_block.index("'POST /api/v1/routes':")
+        route_block = route_settings_block[route_index : route_index + 120]
+
+        self.assertIn("ThrottlingBurstLimit: 5", route_block)
+        self.assertIn("ThrottlingRateLimit: 2", route_block)
+
     def test_admin_routes_use_lovv_token_authorizer(self):
         admin_index = self.template.index("AdminFunction:")
         admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]
@@ -171,10 +188,12 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("${LovvHttpApi}/authorizers/*", self.template)
 
     def test_template_accepts_comma_separated_cors_origins(self):
-        self.assertIn("CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin", self.template)
-        self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
+        self.assertIn("Type: CommaDelimitedList", self.template)
+        self.assertIn('CORS_ALLOW_ORIGINS: !Join [",", !Ref AllowedCorsOrigin]', self.template)
+        self.assertIn("AllowOrigins: !Ref AllowedCorsOrigin", self.template)
         self.assertIn("Default: http://localhost:5173,http://127.0.0.1:5173", self.template)
         self.assertIn("https://d3nuef0zacpyj.cloudfront.net", self.template)
+        self.assertIn("https://lovv.site", self.template)
         self.assertIn("https://lovv-admin-web.vercel.app", self.template)
         self.assertIn("https://lovv-admin-web-skn26.vercel.app", self.template)
 
@@ -259,13 +278,39 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("!Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}", block)
         self.assertIn("!Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}/index/CityDomainIndex", block)
 
+    def test_kakao_place_image_route_uses_a_bounded_public_metadata_lambda(self):
+        index = self.template.index("KakaoPlaceImagesFunction:")
+        block = self.template[index : index + 620]
+
+        self.assertIn("Handler: kakao_places.app.lambda_handler", block)
+        self.assertIn("Timeout: 5", block)
+        self.assertIn("MemorySize: 128", block)
+        self.assertIn("Path: /api/v1/kakao-places/{placeId}/image", block)
+
+    def test_kakao_place_image_route_has_bounded_throttling(self):
+        route_settings_index = self.template.index("RouteSettings:")
+        route_settings_block = self.template[
+            route_settings_index : self.template.index("CorsConfiguration:")
+        ]
+        route_index = route_settings_block.index(
+            "'GET /api/v1/kakao-places/{placeId}/image':"
+        )
+        route_block = route_settings_block[route_index : route_index + 150]
+
+        self.assertIn("ThrottlingBurstLimit: 20", route_block)
+        self.assertIn("ThrottlingRateLimit: 5", route_block)
+
     def test_agentcore_runtime_arn_is_environment_parameter(self):
         self.assertIn("AgentCoreRuntimeArn:", self.template)
         index = self.template.index("AgentCoreFunction:")
-        block = self.template[index : index + 1300]
+        block = self.template[index : self.template.index("RecommendationFeedFunction:", index)]
 
         self.assertIn("BEDROCK_AGENT_ARN: !Ref AgentCoreRuntimeArn", block)
-        self.assertIn('Resource: !Sub "${AgentCoreRuntimeArn}*"', block)
+        self.assertIn("- !Ref AgentCoreRuntimeArn", block)
+        self.assertIn('- !Sub "${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT"', block)
+        self.assertNotIn('${AgentCoreRuntimeArn}*', block)
+        self.assertNotIn("FunctionUrlConfig:", block)
+        self.assertIn("Authorizer: LovvTokenAuthorizer", block)
 
     def test_recommendation_feed_routes_are_exposed_with_expected_auth(self):
         self.assertIn("RecommendationFeedFunction:", self.template)
@@ -280,21 +325,23 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         reaction_block = block[reaction_path_index : reaction_path_index + 260]
         self.assertIn("Authorizer: LovvTokenAuthorizer", reaction_block)
 
-    def test_agentcore_openrouteservice_key_is_server_side_noecho_parameter(self):
-        self.assertIn("OpenRouteServiceApiKey:", self.template)
-        parameter_index = self.template.index("OpenRouteServiceApiKey:")
+    def test_agentcore_kakao_mobility_key_is_server_side_noecho_parameter(self):
+        self.assertIn("KakaoMobilityRestApiKey:", self.template)
+        parameter_index = self.template.index("KakaoMobilityRestApiKey:")
         self.assertIn("NoEcho: true", self.template[parameter_index : parameter_index + 180])
-        self.assertIn("OpenRouteServiceApiKeySsmName:", self.template)
+        self.assertIn("KakaoMobilityRestApiKeySsmName:", self.template)
 
         agentcore_index = self.template.index("AgentCoreFunction:")
-        agentcore_block = self.template[agentcore_index : agentcore_index + 1300]
+        agentcore_block = self.template[agentcore_index : agentcore_index + 1600]
 
-        self.assertIn("OPENROUTESERVICE_API_KEY: !Ref OpenRouteServiceApiKey", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_API_KEY_SSM_NAME: !Ref OpenRouteServiceApiKeySsmName", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_PROFILE: !Ref OpenRouteServiceProfile", agentcore_block)
-        self.assertIn("OPENROUTESERVICE_TIMEOUT_SECONDS: !Ref OpenRouteServiceTimeoutSeconds", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_REST_API_KEY: !Ref KakaoMobilityRestApiKey", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_REST_API_KEY_SSM_NAME: !Ref KakaoMobilityRestApiKeySsmName", agentcore_block)
+        self.assertIn("KAKAO_MOBILITY_TIMEOUT_SECONDS: !Ref KakaoMobilityTimeoutSeconds", agentcore_block)
+        self.assertIn("HasKakaoMobilitySsmParameter:", self.template)
+        self.assertIn("- HasKakaoMobilitySsmParameter", agentcore_block)
         self.assertIn("ssm:GetParameter", agentcore_block)
-        self.assertIn("parameter${OpenRouteServiceApiKeySsmName}", agentcore_block)
+        self.assertIn("parameter${KakaoMobilityRestApiKeySsmName}", agentcore_block)
+        self.assertIn("- !Ref AWS::NoValue", agentcore_block)
 
 
 class ExistingDataStackSchemaTest(unittest.TestCase):

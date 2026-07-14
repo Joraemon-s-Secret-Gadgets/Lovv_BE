@@ -74,6 +74,11 @@ def reaction_cities(city_records, liked_signals, limit=DEFAULT_LIMIT):
     if not liked_signals:
         return {"items": []}
 
+    reacted_city_ids = {
+        city_id
+        for city_id in (_signal_city_id(signal) for signal in liked_signals)
+        if city_id
+    }
     candidates = {}
     for signal_index, signal in enumerate(liked_signals):
         signal_country = _signal_country(signal)
@@ -81,10 +86,12 @@ def reaction_cities(city_records, liked_signals, limit=DEFAULT_LIMIT):
         for record in city_records:
             if signal_country and record.get("country") != signal_country:
                 continue
-            score = _reaction_score(record, signal_themes, signal)
+            city_id = record.get("id")
+            if city_id in reacted_city_ids:
+                continue
+            score = _reaction_score(record, signal_themes)
             if score <= 0:
                 continue
-            city_id = record.get("id")
             previous = candidates.get(city_id)
             if previous and previous["score"] >= score:
                 continue
@@ -180,11 +187,9 @@ def _monthly_score(record, month):
     return score
 
 
-def _reaction_score(record, signal_themes, signal):
+def _reaction_score(record, signal_themes):
     themes = set(_theme_labels(record.get("themes") or []))
     score = len(themes & signal_themes) * 30
-    if (record.get("id") or "") == _signal_city_id(signal):
-        score += 15
     if record.get("image_url"):
         score += 4
     return score

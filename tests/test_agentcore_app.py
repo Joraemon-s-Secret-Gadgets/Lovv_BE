@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.app import handle_request
 
 
-def make_event(body, headers=None):
+def make_event(body, headers=None, path="/api/v1/recommendations"):
     return {
-        "rawPath": "/api/v1/recommendations",
+        "rawPath": path,
         "headers": headers or {},
         "requestContext": {"http": {"method": "POST"}},
         "body": json.dumps(body),
@@ -28,6 +28,56 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
     def tearDown(self):
         self.env_patcher.stop()
+
+    def test_calculates_authenticated_route_with_normalized_coordinates(self):
+        route = {
+            "provider": "kakao-mobility",
+            "profile": "driving",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[128.947, 37.771], [128.908, 37.805]],
+            },
+            "distanceMeters": 4200,
+            "durationSeconds": 780,
+            "segments": [{"distanceMeters": 4200, "durationSeconds": 780}],
+        }
+
+        with patch("agentcore.app.routing.calculate_route", return_value=route) as calculate_route:
+            response = handle_request(
+                make_event(
+                    {"coordinates": [[128.947, 37.771], [128.908, 37.805]]},
+                    path="/api/v1/routes",
+                )
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(json.loads(response["body"])["route"], route)
+        calculate_route.assert_called_once_with([[128.947, 37.771], [128.908, 37.805]])
+
+    def test_rejects_invalid_route_coordinates_before_provider_call(self):
+        with patch("agentcore.app.routing.calculate_route") as calculate_route:
+            response = handle_request(
+                make_event({"coordinates": [[128.947, 91], [128.908, 37.805]]}, path="/api/v1/routes")
+            )
+
+        body = json.loads(response["body"])
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        calculate_route.assert_not_called()
+
+    def test_route_provider_failure_returns_service_error_without_internal_detail(self):
+        with patch("agentcore.app.routing.calculate_route", side_effect=RuntimeError("secret provider detail")):
+            response = handle_request(
+                make_event(
+                    {"coordinates": [[128.947, 37.771], [128.908, 37.805]]},
+                    path="/api/v1/routes",
+                )
+            )
+
+        body = json.loads(response["body"])
+        self.assertEqual(response["statusCode"], 502)
+        self.assertEqual(body["error"]["code"], "ROUTE_UNAVAILABLE")
+        self.assertNotIn("secret provider detail", response["body"])
 
     def test_returns_mock_recommendation_without_bedrock_call(self):
         response = handle_request(
@@ -97,6 +147,24 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertEqual(response["statusCode"], 400)
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
 
+    def test_rejects_request_body_larger_than_32_kib(self):
+        event = make_event(
+            {
+                "entryType": "create",
+                "country": "KR",
+                "tripType": "2d1n",
+                "themes": ["sea_coast"],
+                "includeFestivals": False,
+                "rawQuery": "가" * (32 * 1024),
+            }
+        )
+
+        response = handle_request(event)
+        body = json.loads(response["body"])
+
+        self.assertEqual(response["statusCode"], 413)
+        self.assertEqual(body["error"]["code"], "REQUEST_TOO_LARGE")
+
     def test_rejects_create_payload_without_include_festivals(self):
         response = handle_request(
             make_event(
@@ -136,7 +204,7 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertNotIn("secret backend failure", response["body"])
         self.assertNotIn("saveCompatibility", response["body"])
 
-    def test_agentcore_response_is_enriched_with_openrouteservice_route_when_configured(self):
+    def test_agentcore_response_is_enriched_with_kakao_mobility_route_when_configured(self):
         agentcore_payload = {
             "result": {
                 "destination": {
@@ -165,17 +233,12 @@ class AgentCoreMockAppTest(unittest.TestCase):
             def invoke_agent_runtime(self, **kwargs):
                 return {"response": BytesIO(json.dumps(agentcore_payload).encode("utf-8"))}
 
-        ors_response = {
-            "features": [
+        kakao_response = {
+            "routes": [
                 {
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[128.947, 37.771], [128.908, 37.805]],
-                    },
-                    "properties": {
-                        "summary": {"distance": 4200, "duration": 780},
-                        "segments": [{"distance": 4200, "duration": 780}],
-                    },
+                    "result_code": 0,
+                    "summary": {"distance": 4200, "duration": 780},
+                    "sections": [{"distance": 4200, "duration": 780, "roads": [{"vertexes": [128.947, 37.771, 128.908, 37.805]}]}],
                 }
             ]
         }
@@ -185,12 +248,12 @@ class AgentCoreMockAppTest(unittest.TestCase):
             {
                 "MOCK_RECOMMENDATION": "false",
                 "BEDROCK_AGENT_ARN": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
-                "OPENROUTESERVICE_API_KEY": "test-ors-key",
+                "KAKAO_MOBILITY_REST_API_KEY": "test-kakao-key",
             },
             clear=False,
         ):
             with patch("agentcore.app._get_bedrock_client", return_value=FakeBedrockClient()):
-                with patch("agentcore.routing._post_json", return_value=ors_response):
+                with patch("agentcore.routing._get_json", return_value=kakao_response):
                     response = handle_request(
                         make_event(
                             {
@@ -209,10 +272,10 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertFalse(body["mock"])
-        self.assertEqual(day["route"]["provider"], "openrouteservice")
+        self.assertEqual(day["route"]["provider"], "kakao-mobility")
         self.assertEqual(day["route"]["distanceMeters"], 4200)
         self.assertEqual(day["items"][0]["moveMinutes"], 13)
-        self.assertEqual(body["saveCompatibility"]["payload"]["itinerary"]["days"][0]["route"]["provider"], "openrouteservice")
+        self.assertEqual(body["saveCompatibility"]["payload"]["itinerary"]["days"][0]["route"]["provider"], "kakao-mobility")
         self.assertNotIn("mock", body["itinerary"]["title"].lower())
         self.assertNotIn("mock", body["itinerary"]["summary"].lower())
         self.assertNotIn("mock", body["saveCompatibility"]["payload"]["title"].lower())
@@ -364,13 +427,13 @@ class AgentCoreMockAppTest(unittest.TestCase):
                 "day": 1,
                 "order": 1,
                 "title": "묵호등대",
-                "cityId": "KR-32-3",
+                "cityId": "KR-51-170",
                 "theme": "바다·해안",
             }
         ]
         agentcore_payload = {
             "recommendationId": "req-modify-001",
-            "destination": {"destinationId": "KR-32-3", "name": "동해시", "country": "KR"},
+            "destination": {"destinationId": "KR-51-170", "name": "동해시", "country": "KR"},
             "itinerary": {"tripType": "2d1n", "days": [{"day": 1, "items": current_order}]},
             "explainability": {"userNotice": "수정했습니다."},
             "festivalDateVerifications": [],
@@ -398,7 +461,7 @@ class AgentCoreMockAppTest(unittest.TestCase):
                             "requestId": "req-modify-001",
                             "sessionId": "session-123456789012345678901234567",
                             "threadId": "session-123456789012345678901234567",
-                            "destinationId": "KR-32-3",
+                            "destinationId": "KR-51-170",
                             "rawModifyQuery": "1일차 첫 장소를 더 조용한 곳으로 바꿔줘.",
                             "currentOrder": current_order,
                         }

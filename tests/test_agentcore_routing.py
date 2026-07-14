@@ -1,16 +1,56 @@
 import os
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib import parse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from agentcore.routing import _post_json, enrich_itinerary_routes
+from agentcore.routing import _get_json, enrich_itinerary_routes
+
+
+def kakao_response(distance=4200, duration=780):
+    return kakao_response_with_sections([(distance, duration)])
+
+
+def kakao_response_with_sections(leg_values):
+    sections = []
+    for index, (distance, duration) in enumerate(leg_values):
+        sections.append(
+            {
+                "distance": distance,
+                "duration": duration,
+                "roads": [
+                    {
+                        "vertexes": [
+                            128.947 - index / 100,
+                            37.771 + index / 100,
+                            128.930 - index / 100,
+                            37.790 + index / 100,
+                        ]
+                    }
+                ],
+            }
+        )
+    return {
+        "routes": [
+            {
+                "result_code": 0,
+                "result_msg": "길찾기 성공",
+                "summary": {
+                    "distance": sum(distance for distance, _ in leg_values),
+                    "duration": sum(duration for _, duration in leg_values),
+                },
+                "sections": sections,
+            }
+        ]
+    }
 
 
 class AgentCoreRoutingTest(unittest.TestCase):
-    def test_enriches_itinerary_day_with_openrouteservice_geometry_and_leg_summary(self):
+    def test_enriches_itinerary_day_with_kakao_geometry_and_leg_summary(self):
         itinerary = {
             "days": [
                 {
@@ -23,54 +63,40 @@ class AgentCoreRoutingTest(unittest.TestCase):
             ]
         }
 
-        ors_response = {
-            "features": [
-                {
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[128.947, 37.771], [128.908, 37.805]],
-                    },
-                    "properties": {
-                        "summary": {"distance": 4200.5, "duration": 780.2},
-                        "segments": [
-                            {"distance": 4200.5, "duration": 780.2},
-                        ],
-                    },
-                }
-            ]
-        }
-
-        def fake_post_json(url, api_key, body, timeout_seconds):
-            self.assertEqual(api_key, "test-ors-key")
-            self.assertIn("/v2/directions/foot-walking/geojson", url)
-            self.assertEqual(body["coordinates"], [[128.947, 37.771], [128.908, 37.805]])
-            self.assertTrue(body["instructions"])
-            self.assertEqual(timeout_seconds, 4.0)
-            return ors_response
+        def fake_get_json(url, api_key, timeout_seconds):
+            self.assertEqual(api_key, "test-kakao-key")
+            parsed_url = parse.urlparse(url)
+            query = parse.parse_qs(parsed_url.query)
+            self.assertEqual(parsed_url.path, "/v1/directions")
+            self.assertEqual(query["origin"], ["128.947,37.771"])
+            self.assertEqual(query["destination"], ["128.908,37.805"])
+            self.assertEqual(query["summary"], ["false"])
+            self.assertEqual(timeout_seconds, 3.0)
+            return kakao_response()
 
         with patch.dict(
             os.environ,
             {
-                "OPENROUTESERVICE_API_KEY": "test-ors-key",
-                "OPENROUTESERVICE_PROFILE": "foot-walking",
-                "OPENROUTESERVICE_TIMEOUT_SECONDS": "4",
+                "KAKAO_MOBILITY_REST_API_KEY": "test-kakao-key",
+                "KAKAO_MOBILITY_TIMEOUT_SECONDS": "3",
             },
             clear=False,
         ):
-            with patch("agentcore.routing._post_json", side_effect=fake_post_json) as post_json:
+            with patch("agentcore.routing._get_json", side_effect=fake_get_json) as get_json:
                 enriched = enrich_itinerary_routes(itinerary)
 
         day = enriched["days"][0]
-        self.assertEqual(post_json.call_count, 1)
-        self.assertEqual(day["route"]["provider"], "openrouteservice")
-        self.assertEqual(day["route"]["profile"], "foot-walking")
-        self.assertEqual(day["route"]["geometry"]["coordinates"], [[128.947, 37.771], [128.908, 37.805]])
+        self.assertEqual(get_json.call_count, 1)
+        self.assertEqual(day["route"]["provider"], "kakao-mobility")
+        self.assertEqual(day["route"]["profile"], "driving-car")
+        self.assertEqual(day["route"]["geometry"]["type"], "LineString")
+        self.assertEqual(day["route"]["geometry"]["coordinates"][0], [128.947, 37.771])
         self.assertEqual(day["route"]["distanceMeters"], 4200)
         self.assertEqual(day["route"]["durationSeconds"], 780)
         self.assertEqual(day["items"][0]["moveMinutes"], 13)
         self.assertEqual(day["items"][0]["moveDistanceMeters"], 4200)
 
-    def test_skips_route_enrichment_when_openrouteservice_key_is_missing(self):
+    def test_skips_route_enrichment_when_kakao_key_is_missing(self):
         itinerary = {
             "days": [
                 {
@@ -83,15 +109,19 @@ class AgentCoreRoutingTest(unittest.TestCase):
             ]
         }
 
-        with patch.dict(os.environ, {"OPENROUTESERVICE_API_KEY": ""}, clear=False):
-            with patch("agentcore.routing._post_json") as post_json:
+        with patch.dict(
+            os.environ,
+            {"KAKAO_MOBILITY_REST_API_KEY": "", "KAKAO_MOBILITY_REST_API_KEY_SSM_NAME": ""},
+            clear=False,
+        ):
+            with patch("agentcore.routing._get_json") as get_json:
                 enriched = enrich_itinerary_routes(itinerary)
 
         self.assertIs(enriched, itinerary)
         self.assertNotIn("route", enriched["days"][0])
-        post_json.assert_not_called()
+        get_json.assert_not_called()
 
-    def test_reads_openrouteservice_key_from_ssm_name_when_direct_env_key_is_missing(self):
+    def test_reads_kakao_key_from_ssm_name_when_direct_env_key_is_missing(self):
         itinerary = {
             "days": [
                 {
@@ -100,17 +130,6 @@ class AgentCoreRoutingTest(unittest.TestCase):
                         {"title": "A", "latitude": 37.1, "longitude": 127.1},
                         {"title": "B", "latitude": 37.2, "longitude": 127.2},
                     ],
-                }
-            ]
-        }
-        ors_response = {
-            "features": [
-                {
-                    "geometry": {"type": "LineString", "coordinates": [[127.1, 37.1], [127.2, 37.2]]},
-                    "properties": {
-                        "summary": {"distance": 1000, "duration": 180},
-                        "segments": [{"distance": 1000, "duration": 180}],
-                    },
                 }
             ]
         }
@@ -118,41 +137,96 @@ class AgentCoreRoutingTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "OPENROUTESERVICE_API_KEY": "",
-                "OPENROUTESERVICE_API_KEY_SSM_NAME": "/lovv/dev/openrouteservice/api_key",
+                "KAKAO_MOBILITY_REST_API_KEY": "",
+                "KAKAO_MOBILITY_REST_API_KEY_SSM_NAME": "/lovv/dev/kakao_mobility/rest_api_key",
             },
             clear=False,
         ):
-            with patch("agentcore.routing._get_ssm_parameter", return_value="ssm-ors-key", create=True) as get_parameter:
-                with patch("agentcore.routing._post_json", return_value=ors_response) as post_json:
+            with patch("agentcore.routing._get_ssm_parameter", return_value="ssm-kakao-key") as get_parameter:
+                with patch("agentcore.routing._get_json", return_value=kakao_response()) as get_json:
                     enriched = enrich_itinerary_routes(itinerary)
 
-        self.assertEqual(get_parameter.call_args.args[0], "/lovv/dev/openrouteservice/api_key")
-        self.assertEqual(post_json.call_args.kwargs.get("api_key") or post_json.call_args.args[1], "ssm-ors-key")
-        self.assertEqual(enriched["days"][0]["route"]["provider"], "openrouteservice")
+        self.assertEqual(get_parameter.call_args.args[0], "/lovv/dev/kakao_mobility/rest_api_key")
+        self.assertEqual(get_json.call_args.args[1], "ssm-kakao-key")
+        self.assertEqual(enriched["days"][0]["route"]["provider"], "kakao-mobility")
 
-    def test_skips_days_without_two_valid_coordinates(self):
+    def test_splits_more_than_five_waypoints_and_merges_route_chunks(self):
+        items = [
+            {"title": str(index), "latitude": 37.0 + index / 100, "longitude": 127.0 + index / 100}
+            for index in range(9)
+        ]
+        itinerary = {"days": [{"day": 1, "items": items}]}
+
+        responses = [
+            kakao_response_with_sections([(1000, 60)] * 6),
+            kakao_response_with_sections([(1000, 60)] * 2),
+        ]
+
+        with patch.dict(os.environ, {"KAKAO_MOBILITY_REST_API_KEY": "test-kakao-key"}, clear=False):
+            with patch("agentcore.routing._get_json", side_effect=responses) as get_json:
+                enriched = enrich_itinerary_routes(itinerary)
+
+        route = enriched["days"][0]["route"]
+        first_query = parse.parse_qs(parse.urlparse(get_json.call_args_list[0].args[0]).query)
+        second_query = parse.parse_qs(parse.urlparse(get_json.call_args_list[1].args[0]).query)
+        self.assertEqual(get_json.call_count, 2)
+        self.assertEqual(first_query["origin"], ["127.0,37.0"])
+        self.assertEqual(first_query["destination"], ["127.06,37.06"])
+        self.assertEqual(len(first_query["waypoints"][0].split("|")), 5)
+        self.assertEqual(second_query["origin"], ["127.06,37.06"])
+        self.assertEqual(second_query["destination"], ["127.08,37.08"])
+        self.assertEqual(len(second_query["waypoints"][0].split("|")), 1)
+        self.assertEqual(route["distanceMeters"], 8000)
+        self.assertEqual(route["durationSeconds"], 480)
+        self.assertEqual(len(route["segments"]), 8)
+        self.assertTrue(all(item.get("moveDistanceMeters") == 1000 for item in items[:-1]))
+        self.assertTrue(all(item.get("moveMinutes") == 1 for item in items[:-1]))
+
+    def test_enriches_multiple_days_concurrently_with_isolated_failures(self):
         itinerary = {
             "days": [
                 {
-                    "day": 1,
+                    "day": day_number,
                     "items": [
-                        {"title": "A", "latitude": 37.1, "longitude": 127.1},
-                        {"title": "B", "latitude": None, "longitude": None},
+                        {"title": "A", "latitude": 37.1, "longitude": 127.0 + day_number},
+                        {"title": "B", "latitude": 37.2, "longitude": 127.5 + day_number},
                     ],
                 }
+                for day_number in range(1, 4)
             ]
         }
+        all_workers_started = threading.Barrier(3)
+        release_first_day = threading.Event()
 
-        with patch.dict(os.environ, {"OPENROUTESERVICE_API_KEY": "test-ors-key"}, clear=False):
-            with patch("agentcore.routing._post_json") as post_json:
+        def fake_fetch_route(**kwargs):
+            all_workers_started.wait(timeout=1)
+            day_number = int(kwargs["coordinates"][0][0] - 127.0)
+            if day_number == 2:
+                raise TimeoutError("simulated Kakao timeout")
+            if day_number == 1:
+                self.assertTrue(release_first_day.wait(timeout=1))
+            else:
+                release_first_day.set()
+            distance_meters = day_number * 1000
+            return {
+                "provider": "kakao-mobility",
+                "profile": "driving-car",
+                "geometry": {"type": "LineString", "coordinates": []},
+                "distanceMeters": distance_meters,
+                "durationSeconds": 180,
+                "segments": [{"distanceMeters": distance_meters, "durationSeconds": 180}],
+            }
+
+        with patch.dict(os.environ, {"KAKAO_MOBILITY_REST_API_KEY": "test-kakao-key"}, clear=False):
+            with patch("agentcore.routing._fetch_route", side_effect=fake_fetch_route) as fetch_route:
                 enriched = enrich_itinerary_routes(itinerary)
 
-        self.assertIs(enriched, itinerary)
-        self.assertNotIn("route", enriched["days"][0])
-        post_json.assert_not_called()
+        self.assertEqual(fetch_route.call_count, 3)
+        self.assertEqual(enriched["days"][0]["route"]["distanceMeters"], 1000)
+        self.assertNotIn("route", enriched["days"][1])
+        self.assertEqual(enriched["days"][2]["route"]["distanceMeters"], 3000)
 
-    def test_post_json_requests_openrouteservice_geojson_response_format(self):
+    def test_get_json_sends_kakao_authorization_header(self):
         captured = {}
 
         class FakeResponse:
@@ -163,30 +237,21 @@ class AgentCoreRoutingTest(unittest.TestCase):
                 return False
 
             def read(self):
-                return b'{"features":[]}'
+                return b'{"routes":[]}'
 
         def fake_urlopen(http_request, timeout):
             captured["accept"] = http_request.get_header("Accept")
             captured["authorization"] = http_request.get_header("Authorization")
-            captured["content_type"] = http_request.get_header("Content-type")
             captured["timeout"] = timeout
-            captured["body"] = http_request.data
             return FakeResponse()
 
         with patch("agentcore.routing.request.urlopen", side_effect=fake_urlopen):
-            response = _post_json(
-                "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
-                "test-ors-key",
-                {"coordinates": [[128.947, 37.771], [128.908, 37.805]]},
-                4.0,
-            )
+            response = _get_json("https://apis-navi.kakaomobility.com/v1/directions", "test-kakao-key", 3.0)
 
-        self.assertEqual(response, {"features": []})
-        self.assertEqual(captured["accept"], "application/geo+json")
-        self.assertEqual(captured["authorization"], "test-ors-key")
-        self.assertEqual(captured["content_type"], "application/json")
-        self.assertEqual(captured["timeout"], 4.0)
-        self.assertIn(b'"coordinates"', captured["body"])
+        self.assertEqual(response, {"routes": []})
+        self.assertEqual(captured["accept"], "application/json")
+        self.assertEqual(captured["authorization"], "KakaoAK test-kakao-key")
+        self.assertEqual(captured["timeout"], 3.0)
 
 
 if __name__ == "__main__":
