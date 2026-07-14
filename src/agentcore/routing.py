@@ -5,6 +5,7 @@
 import json
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib import request
 
 from shared.logger import Tag, get_logger
@@ -14,6 +15,7 @@ LOGGER = get_logger(__name__)
 DEFAULT_ORS_BASE_URL = "https://api.openrouteservice.org"
 DEFAULT_ORS_PROFILE = "driving-car"
 DEFAULT_ORS_TIMEOUT_SECONDS = 4.0
+MAX_ROUTE_ENRICHMENT_WORKERS = 4
 _ssm_client = None
 _ssm_parameter_cache = {}
 
@@ -36,6 +38,7 @@ def enrich_itinerary_routes(itinerary):
     base_url = (os.environ.get("OPENROUTESERVICE_BASE_URL") or DEFAULT_ORS_BASE_URL).strip().rstrip("/")
     timeout_seconds = _timeout_seconds()
 
+    route_jobs = []
     for day in days:
         if not isinstance(day, dict):
             continue
@@ -47,27 +50,42 @@ def enrich_itinerary_routes(itinerary):
         if len(points) < 2:
             continue
 
-        try:
-            ors_result = _fetch_route(
+        route_jobs.append((day, items, points))
+
+    if not route_jobs:
+        return itinerary
+
+    worker_count = min(len(route_jobs), MAX_ROUTE_ENRICHMENT_WORKERS)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _fetch_route,
                 base_url=base_url,
                 profile=profile,
                 api_key=api_key,
                 coordinates=[point["coordinate"] for point in points],
                 timeout_seconds=timeout_seconds,
-            )
-        except Exception as error:
-            LOGGER.warning(
-                Tag.PLAN,
-                "OpenRouteService route enrichment skipped day=%s pointCount=%s errorType=%s",
-                day.get("day"),
-                len(points),
-                error.__class__.__name__,
-            )
-            continue
+            ): (day, items, points)
+            for day, items, points in route_jobs
+        }
 
-        if ors_result:
-            day["route"] = ors_result
-            _apply_leg_summaries(items, points, ors_result.get("segments") or [])
+        for future in as_completed(futures):
+            day, items, points = futures[future]
+            try:
+                ors_result = future.result()
+            except Exception as error:
+                LOGGER.warning(
+                    Tag.PLAN,
+                    "OpenRouteService route enrichment skipped day=%s pointCount=%s errorType=%s",
+                    day.get("day"),
+                    len(points),
+                    error.__class__.__name__,
+                )
+                continue
+
+            if ors_result:
+                day["route"] = ors_result
+                _apply_leg_summaries(items, points, ors_result.get("segments") or [])
 
     return itinerary
 

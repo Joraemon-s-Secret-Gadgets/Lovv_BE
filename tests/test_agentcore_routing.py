@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -151,6 +152,53 @@ class AgentCoreRoutingTest(unittest.TestCase):
         self.assertIs(enriched, itinerary)
         self.assertNotIn("route", enriched["days"][0])
         post_json.assert_not_called()
+
+    def test_enriches_multiple_days_concurrently_with_isolated_failures(self):
+        itinerary = {
+            "days": [
+                {
+                    "day": day_number,
+                    "items": [
+                        {"title": "A", "latitude": 37.1, "longitude": 127.0 + day_number},
+                        {"title": "B", "latitude": 37.2, "longitude": 127.5 + day_number},
+                    ],
+                }
+                for day_number in range(1, 4)
+            ]
+        }
+        all_workers_started = threading.Barrier(3)
+        release_first_day = threading.Event()
+
+        def fake_fetch_route(**kwargs):
+            all_workers_started.wait(timeout=1)
+            day_number = int(kwargs["coordinates"][0][0] - 127.0)
+            if day_number == 2:
+                raise TimeoutError("simulated ORS timeout")
+            if day_number == 1:
+                self.assertTrue(release_first_day.wait(timeout=1))
+            else:
+                release_first_day.set()
+            distance_meters = day_number * 1000
+            return {
+                "provider": "openrouteservice",
+                "profile": "driving-car",
+                "geometry": {"type": "LineString", "coordinates": []},
+                "distanceMeters": distance_meters,
+                "durationSeconds": 180,
+                "segments": [{"distanceMeters": distance_meters, "durationSeconds": 180}],
+            }
+
+        with patch.dict(os.environ, {"OPENROUTESERVICE_API_KEY": "test-ors-key"}, clear=False):
+            with patch("agentcore.routing._fetch_route", side_effect=fake_fetch_route) as fetch_route:
+                enriched = enrich_itinerary_routes(itinerary)
+
+        self.assertEqual(fetch_route.call_count, 3)
+        self.assertEqual(enriched["days"][0]["route"]["distanceMeters"], 1000)
+        self.assertNotIn("route", enriched["days"][1])
+        self.assertEqual(enriched["days"][2]["route"]["distanceMeters"], 3000)
+        self.assertEqual(enriched["days"][0]["items"][0]["moveDistanceMeters"], 1000)
+        self.assertNotIn("moveDistanceMeters", enriched["days"][1]["items"][0])
+        self.assertEqual(enriched["days"][2]["items"][0]["moveDistanceMeters"], 3000)
 
     def test_post_json_requests_openrouteservice_geojson_response_format(self):
         captured = {}
