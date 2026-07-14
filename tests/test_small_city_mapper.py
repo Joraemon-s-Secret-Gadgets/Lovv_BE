@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from small_cities.mapper import build_city_api_record, normalize_theme
+from small_cities.mapper import build_city_api_record, get_korean_topic_particle, normalize_theme
 from small_cities.service import SmallCityService
 
 
@@ -87,6 +87,7 @@ class SmallCityMapperTest(unittest.TestCase):
         self.assertAlmostEqual(record["latitude"], 37.74)
         self.assertAlmostEqual(record["longitude"], 128.865)
         self.assertEqual(record["themes"], ["미식", "자연", "축제"])
+        self.assertEqual(record["summary"], "강원 강릉은 미식·자연 여행 후보가 모여 있는 소도시입니다.")
         self.assertEqual(record["highlights"], ["강릉커피축제", "국립대관령자연휴양림"])
         self.assertEqual(record["route_seed"], ["강릉커피축제", "국립대관령자연휴양림"])
         self.assertEqual(record["image_url"], "https://example.com/coffee.jpg")
@@ -103,6 +104,12 @@ class SmallCityMapperTest(unittest.TestCase):
         self.assertEqual(normalize_theme("바다·해안"), "바다")
         self.assertEqual(normalize_theme("예술·감성"), "예술")
         self.assertIsNone(normalize_theme(""))
+
+    def test_selects_korean_topic_particle_from_final_consonant(self):
+        self.assertEqual(get_korean_topic_particle("화성"), "은")
+        self.assertEqual(get_korean_topic_particle("평택"), "은")
+        self.assertEqual(get_korean_topic_particle("동해"), "는")
+        self.assertEqual(get_korean_topic_particle("제주"), "는")
 
     def test_invalid_or_missing_image_urls_degrade_to_null(self):
         metadata = {

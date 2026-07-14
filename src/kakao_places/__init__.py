@@ -1,0 +1,1 @@
+"""Kakao place metadata integration."""

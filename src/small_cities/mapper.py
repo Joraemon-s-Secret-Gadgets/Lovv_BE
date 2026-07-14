@@ -68,6 +68,15 @@ def normalize_city_name(city_name):
     return trimmed
 
 
+def get_korean_topic_particle(value):
+    if not isinstance(value, str) or not value.strip():
+        return "는"
+
+    code_point = ord(value.strip()[-1])
+    has_final_consonant = 0xAC00 <= code_point <= 0xD7A3 and (code_point - 0xAC00) % 28 != 0
+    return "은" if has_final_consonant else "는"
+
+
 def read_number(value):
     if isinstance(value, Decimal):
         return float(value)
@@ -216,7 +225,10 @@ def build_city_api_record(metadata, items, source="S3RawCityDetails", source_key
         "latitude": latitude,
         "longitude": longitude,
         "themes": themes,
-        "summary": f"{region} {display_name}는 {theme_summary} 여행 후보가 모여 있는 소도시입니다.",
+        "summary": (
+            f"{region} {display_name}{get_korean_topic_particle(display_name)} "
+            f"{theme_summary} 여행 후보가 모여 있는 소도시입니다."
+        ),
         "detail": (
             f"대표 후보는 {', '.join(highlights[:3])}이며 "
             f"관광지 {attraction_count}건, 축제 {festival_count}건, "

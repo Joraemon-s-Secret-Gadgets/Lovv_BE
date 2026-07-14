@@ -97,6 +97,24 @@ class AgentCoreMockAppTest(unittest.TestCase):
         self.assertEqual(response["statusCode"], 400)
         self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
 
+    def test_rejects_request_body_larger_than_32_kib(self):
+        event = make_event(
+            {
+                "entryType": "create",
+                "country": "KR",
+                "tripType": "2d1n",
+                "themes": ["sea_coast"],
+                "includeFestivals": False,
+                "rawQuery": "가" * (32 * 1024),
+            }
+        )
+
+        response = handle_request(event)
+        body = json.loads(response["body"])
+
+        self.assertEqual(response["statusCode"], 413)
+        self.assertEqual(body["error"]["code"], "REQUEST_TOO_LARGE")
+
     def test_rejects_create_payload_without_include_festivals(self):
         response = handle_request(
             make_event(
@@ -364,13 +382,13 @@ class AgentCoreMockAppTest(unittest.TestCase):
                 "day": 1,
                 "order": 1,
                 "title": "묵호등대",
-                "cityId": "KR-32-3",
+                "cityId": "KR-51-170",
                 "theme": "바다·해안",
             }
         ]
         agentcore_payload = {
             "recommendationId": "req-modify-001",
-            "destination": {"destinationId": "KR-32-3", "name": "동해시", "country": "KR"},
+            "destination": {"destinationId": "KR-51-170", "name": "동해시", "country": "KR"},
             "itinerary": {"tripType": "2d1n", "days": [{"day": 1, "items": current_order}]},
             "explainability": {"userNotice": "수정했습니다."},
             "festivalDateVerifications": [],
@@ -398,7 +416,7 @@ class AgentCoreMockAppTest(unittest.TestCase):
                             "requestId": "req-modify-001",
                             "sessionId": "session-123456789012345678901234567",
                             "threadId": "session-123456789012345678901234567",
-                            "destinationId": "KR-32-3",
+                            "destinationId": "KR-51-170",
                             "rawModifyQuery": "1일차 첫 장소를 더 조용한 곳으로 바꿔줘.",
                             "currentOrder": current_order,
                         }

@@ -4,8 +4,8 @@ Description: Lovv backend API for social auth, preferences, map/city, mock recom
 
 Parameters:
   AllowedCorsOrigin:
-    Type: String
-    Default: http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net,https://dkyiemfaw3g04.cloudfront.net,https://www.lovv.site,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app
+    Type: CommaDelimitedList
+    Default: http://localhost:5173,http://127.0.0.1:5173,https://d3nuef0zacpyj.cloudfront.net,https://dkyiemfaw3g04.cloudfront.net,https://lovv.site,https://www.lovv.site,https://admin.lovv.site,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app
     Description: Comma-separated browser origins allowed to send credentialed API requests.
   MapCityS3Bucket:
     Type: String
@@ -141,11 +141,11 @@ Parameters:
     Description: Globally unique Cognito Hosted UI domain prefix. Replace before deployment.
   CognitoCallbackUrls:
     Type: CommaDelimitedList
-    Default: http://localhost:5173/auth/callback/cognito,http://127.0.0.1:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito,https://www.lovv.site/auth/callback/cognito
+    Default: http://localhost:5173/auth/callback/cognito,http://127.0.0.1:5173/auth/callback/cognito,https://d3nuef0zacpyj.cloudfront.net/auth/callback/cognito,https://lovv.site/auth/callback/cognito,https://www.lovv.site/auth/callback/cognito
     Description: Comma-separated Cognito OAuth callback URLs. Use HTTPS except localhost/127.0.0.1.
   CognitoLogoutUrls:
     Type: CommaDelimitedList
-    Default: http://localhost:5173/,http://127.0.0.1:5173/,https://d3nuef0zacpyj.cloudfront.net/,https://www.lovv.site/
+    Default: http://localhost:5173/,http://127.0.0.1:5173/,https://d3nuef0zacpyj.cloudfront.net/,https://lovv.site/,https://www.lovv.site/
     Description: Comma-separated Cognito OAuth logout redirect URLs. Use HTTPS except localhost/127.0.0.1.
   CognitoGoogleClientId:
     Type: String
@@ -252,8 +252,8 @@ Globals:
     CodeUri: src/
     Environment:
       Variables:
-        CORS_ALLOW_ORIGIN: !Select [0, !Split [",", !Ref AllowedCorsOrigin]]
-        CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin
+        CORS_ALLOW_ORIGIN: !Select [0, !Ref AllowedCorsOrigin]
+        CORS_ALLOW_ORIGINS: !Join [",", !Ref AllowedCorsOrigin]
 
 Conditions:
   CreateCognitoPoC: !Equals [!Ref EnableCognitoPoC, 'true']
@@ -262,6 +262,10 @@ Resources:
   LovvHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      RouteSettings:
+        'POST /api/v1/recommendations':
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 2
       CorsConfiguration:
         AllowCredentials: true
         AllowHeaders:
@@ -276,7 +280,7 @@ Resources:
           - PATCH
           - DELETE
           - OPTIONS
-        AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]
+        AllowOrigins: !Ref AllowedCorsOrigin
       Auth:
         Authorizers:
           LovvTokenAuthorizer:
@@ -1061,20 +1065,20 @@ Resources:
           OPENROUTESERVICE_API_KEY_SSM_NAME: !Ref OpenRouteServiceApiKeySsmName
           OPENROUTESERVICE_PROFILE: !Ref OpenRouteServiceProfile
           OPENROUTESERVICE_TIMEOUT_SECONDS: !Ref OpenRouteServiceTimeoutSeconds
-          CORS_ALLOW_ORIGIN: !Select [0, !Split [",", !Ref AllowedCorsOrigin]]
-          CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin
+          CORS_ALLOW_ORIGIN: !Select [0, !Ref AllowedCorsOrigin]
+          CORS_ALLOW_ORIGINS: !Join [",", !Ref AllowedCorsOrigin]
       Policies:
         - Statement:
             - Effect: Allow
               Action:
                 - "bedrock-agentcore:InvokeAgentRuntime"
-              Resource: !Sub "${AgentCoreRuntimeArn}*"
+              Resource:
+                - !Ref AgentCoreRuntimeArn
+                - !Sub "${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT"
             - Effect: Allow
               Action:
                 - ssm:GetParameter
               Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${OpenRouteServiceApiKeySsmName}
-      FunctionUrlConfig:
-        AuthType: NONE
       Events:
         CreateRecommendation:
           Type: HttpApi
@@ -1082,6 +1086,8 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: POST
             Path: /api/v1/recommendations
+            Auth:
+              Authorizer: LovvTokenAuthorizer
 
   RecommendationFeedFunction:
     Type: AWS::Serverless::Function
@@ -1358,6 +1364,21 @@ Resources:
             ApiId: !Ref LovvHttpApi
             Method: GET
             Path: /api/v1/map/markers
+
+  KakaoPlaceImagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: kakao_places.app.lambda_handler
+      Description: Resolve a Kakao place representative image from allowlisted public metadata.
+      Timeout: 5
+      MemorySize: 128
+      Events:
+        GetKakaoPlaceImage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: GET
+            Path: /api/v1/kakao-places/{placeId}/image
 
 Outputs:
   LovvApiUrl:

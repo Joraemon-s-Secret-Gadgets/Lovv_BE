@@ -171,10 +171,12 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("${LovvHttpApi}/authorizers/*", self.template)
 
     def test_template_accepts_comma_separated_cors_origins(self):
-        self.assertIn("CORS_ALLOW_ORIGINS: !Ref AllowedCorsOrigin", self.template)
-        self.assertIn('AllowOrigins: !Split [",", !Ref AllowedCorsOrigin]', self.template)
+        self.assertIn("Type: CommaDelimitedList", self.template)
+        self.assertIn('CORS_ALLOW_ORIGINS: !Join [",", !Ref AllowedCorsOrigin]', self.template)
+        self.assertIn("AllowOrigins: !Ref AllowedCorsOrigin", self.template)
         self.assertIn("Default: http://localhost:5173,http://127.0.0.1:5173", self.template)
         self.assertIn("https://d3nuef0zacpyj.cloudfront.net", self.template)
+        self.assertIn("https://lovv.site", self.template)
         self.assertIn("https://lovv-admin-web.vercel.app", self.template)
         self.assertIn("https://lovv-admin-web-skn26.vercel.app", self.template)
 
@@ -259,13 +261,26 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("!Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}", block)
         self.assertIn("!Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MapCityDynamoTableName}/index/CityDomainIndex", block)
 
+    def test_kakao_place_image_route_uses_a_bounded_public_metadata_lambda(self):
+        index = self.template.index("KakaoPlaceImagesFunction:")
+        block = self.template[index : index + 620]
+
+        self.assertIn("Handler: kakao_places.app.lambda_handler", block)
+        self.assertIn("Timeout: 5", block)
+        self.assertIn("MemorySize: 128", block)
+        self.assertIn("Path: /api/v1/kakao-places/{placeId}/image", block)
+
     def test_agentcore_runtime_arn_is_environment_parameter(self):
         self.assertIn("AgentCoreRuntimeArn:", self.template)
         index = self.template.index("AgentCoreFunction:")
-        block = self.template[index : index + 1300]
+        block = self.template[index : self.template.index("RecommendationFeedFunction:", index)]
 
         self.assertIn("BEDROCK_AGENT_ARN: !Ref AgentCoreRuntimeArn", block)
-        self.assertIn('Resource: !Sub "${AgentCoreRuntimeArn}*"', block)
+        self.assertIn("- !Ref AgentCoreRuntimeArn", block)
+        self.assertIn('- !Sub "${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT"', block)
+        self.assertNotIn('${AgentCoreRuntimeArn}*', block)
+        self.assertNotIn("FunctionUrlConfig:", block)
+        self.assertIn("Authorizer: LovvTokenAuthorizer", block)
 
     def test_recommendation_feed_routes_are_exposed_with_expected_auth(self):
         self.assertIn("RecommendationFeedFunction:", self.template)

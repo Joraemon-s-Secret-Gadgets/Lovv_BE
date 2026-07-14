@@ -144,7 +144,7 @@ class RecommendationFeedAppTest(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(body["items"], [])
 
-    def test_reaction_cities_recommends_from_liked_itinerary_signals(self):
+    def test_reaction_cities_excludes_reacted_destination_and_recommends_similar_city(self):
         response = handle_request(
             event("GET", "/api/v1/recommendations/reaction-cities", {"limit": "6"}, user_id="user-1"),
             city_repository=FakeCityRepository(),
@@ -166,8 +166,9 @@ class RecommendationFeedAppTest(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertGreaterEqual(len(body["items"]), 1)
         self.assertEqual(body["items"][0]["sourceReaction"]["itineraryId"], "itinerary-1")
-        self.assertEqual(body["items"][0]["cityId"], "KR-Donghae")
-        self.assertIn("바다", body["items"][0]["themes"])
+        self.assertEqual(body["items"][0]["cityId"], "KR-Jecheon")
+        self.assertNotIn("KR-Donghae", [item["cityId"] for item in body["items"]])
+        self.assertIn("자연", body["items"][0]["themes"])
 
     def test_popular_destinations_aggregates_all_feedback_without_auth(self):
         response = handle_request(

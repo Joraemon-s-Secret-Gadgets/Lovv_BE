@@ -31,6 +31,7 @@ FRONTEND_THEME_LABEL_TO_THEME_ID = {
     "미식·노포": "food_local",
 }
 LOGGER = get_logger(__name__)
+MAX_REQUEST_BODY_BYTES = 32 * 1024
 
 
 class AgentCoreRequestError(Exception):
@@ -624,15 +625,24 @@ def _stable_id(prefix, value):
 
 
 def _json_body(event):
-    """API Gateway 또는 Function URL 요청 바디에서 JSON 데이터 파싱 및 Base64 디코딩 수행"""
+    """API Gateway 요청 바디의 크기를 제한하고 JSON 데이터를 파싱한다."""
     raw_body = event.get("body")
     if raw_body in (None, ""):
         return {}
     if event.get("isBase64Encoded"):
         try:
-            raw_body = base64.b64decode(raw_body).decode("utf-8")
+            decoded_body = base64.b64decode(raw_body, validate=True)
+            if len(decoded_body) > MAX_REQUEST_BODY_BYTES:
+                raise AgentCoreRequestError(413, "REQUEST_TOO_LARGE", "Request body is too large")
+            raw_body = decoded_body.decode("utf-8")
+        except AgentCoreRequestError:
+            raise
         except Exception:
             raise AgentCoreRequestError(400, "INVALID_JSON", "Request body must be valid JSON")
+    elif not isinstance(raw_body, str):
+        raise AgentCoreRequestError(400, "INVALID_JSON", "Request body must be valid JSON")
+    elif len(raw_body.encode("utf-8")) > MAX_REQUEST_BODY_BYTES:
+        raise AgentCoreRequestError(413, "REQUEST_TOO_LARGE", "Request body is too large")
     try:
         parsed = json.loads(raw_body)
     except json.JSONDecodeError:
