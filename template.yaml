@@ -263,6 +263,9 @@ Resources:
         'POST /api/v1/recommendations':
           ThrottlingBurstLimit: 5
           ThrottlingRateLimit: 2
+        'POST /api/v1/routes':
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 2
       CorsConfiguration:
         AllowCredentials: true
         AllowHeaders:
@@ -1079,6 +1082,14 @@ Resources:
                 Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${KakaoMobilityRestApiKeySsmName}
               - !Ref AWS::NoValue
       Events:
+        CalculateRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LovvHttpApi
+            Method: POST
+            Path: /api/v1/routes
+            Auth:
+              Authorizer: LovvTokenAuthorizer
         CreateRecommendation:
           Type: HttpApi
           Properties:

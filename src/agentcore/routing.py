@@ -20,6 +20,21 @@ _ssm_client = None
 _ssm_parameter_cache = {}
 
 
+def calculate_route(coordinates):
+    """Calculate one normalized route for an authenticated API request."""
+    api_key = _kakao_mobility_api_key()
+    if not api_key:
+        return None
+
+    base_url = (os.environ.get("KAKAO_MOBILITY_BASE_URL") or DEFAULT_KAKAO_MOBILITY_BASE_URL).strip().rstrip("/")
+    return _fetch_route(
+        base_url=base_url,
+        api_key=api_key,
+        coordinates=coordinates,
+        timeout_seconds=_timeout_seconds(),
+    )
+
+
 def enrich_itinerary_routes(itinerary):
     """Attach Kakao Mobility route geometry without blocking itinerary creation."""
     api_key = _kakao_mobility_api_key()

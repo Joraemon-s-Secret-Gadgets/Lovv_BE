@@ -32,6 +32,7 @@ FRONTEND_THEME_LABEL_TO_THEME_ID = {
 }
 LOGGER = get_logger(__name__)
 MAX_REQUEST_BODY_BYTES = 32 * 1024
+MAX_ROUTE_COORDINATES = 30
 
 
 class AgentCoreRequestError(Exception):
@@ -69,6 +70,9 @@ def _handle_request(event):
     if method == "OPTIONS":
         return json_response(200, {}, event=event)
         
+    if method == "POST" and path == "/api/v1/routes":
+        return _handle_route_request(event)
+
     # POST /api/v1/recommendations 및 루트 경로("/") 허용 (Function URL 대응)
     if method != "POST" or path not in ("/api/v1/recommendations", "/"):
         return error_response(404, "NOT_FOUND", "Route not found", event=event)
@@ -99,6 +103,50 @@ def _handle_request(event):
             "Recommendation generation is temporarily unavailable",
             event=event,
         )
+
+
+def _handle_route_request(event):
+    coordinates = _validate_route_coordinates(_json_body(event).get("coordinates"))
+    try:
+        route = routing.calculate_route(coordinates)
+    except Exception as error:
+        LOGGER.warning(
+            Tag.PLAN,
+            "Kakao Mobility route request failed pointCount=%s errorType=%s",
+            len(coordinates),
+            error.__class__.__name__,
+        )
+        route = None
+
+    if not route:
+        return error_response(502, "ROUTE_UNAVAILABLE", "Route calculation is temporarily unavailable", event=event)
+    return json_response(200, {"route": route}, event=event)
+
+
+def _validate_route_coordinates(value):
+    if not isinstance(value, list) or not 2 <= len(value) <= MAX_ROUTE_COORDINATES:
+        raise AgentCoreRequestError(
+            400,
+            "VALIDATION_ERROR",
+            f"coordinates must contain between 2 and {MAX_ROUTE_COORDINATES} points",
+        )
+
+    coordinates = []
+    for coordinate in value:
+        if not isinstance(coordinate, list) or len(coordinate) != 2:
+            raise AgentCoreRequestError(400, "VALIDATION_ERROR", "each coordinate must be [longitude, latitude]")
+        longitude, latitude = coordinate
+        if (
+            isinstance(longitude, bool)
+            or isinstance(latitude, bool)
+            or not isinstance(longitude, (int, float))
+            or not isinstance(latitude, (int, float))
+            or not -180 <= longitude <= 180
+            or not -90 <= latitude <= 90
+        ):
+            raise AgentCoreRequestError(400, "VALIDATION_ERROR", "coordinate values are invalid")
+        coordinates.append([float(longitude), float(latitude)])
+    return coordinates
 
 
 _bedrock_client = None

@@ -87,6 +87,23 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
             path_index = preferences_block.index(path)
             self.assertIn("Authorizer: LovvTokenAuthorizer", preferences_block[path_index : path_index + 220])
 
+    def test_agentcore_route_calculation_uses_lovv_token_authorizer(self):
+        agentcore_index = self.template.index("AgentCoreFunction:")
+        agentcore_block = self.template[agentcore_index : self.template.index("Outputs:")]
+        path = "Path: /api/v1/routes"
+        path_index = agentcore_block.index(path)
+
+        self.assertIn("Authorizer: LovvTokenAuthorizer", agentcore_block[path_index : path_index + 220])
+
+    def test_agentcore_route_calculation_is_throttled(self):
+        route_settings_index = self.template.index("RouteSettings:")
+        route_settings_block = self.template[route_settings_index : self.template.index("CorsConfiguration:")]
+        route_index = route_settings_block.index("'POST /api/v1/routes':")
+        route_block = route_settings_block[route_index : route_index + 120]
+
+        self.assertIn("ThrottlingBurstLimit: 5", route_block)
+        self.assertIn("ThrottlingRateLimit: 2", route_block)
+
     def test_admin_routes_use_lovv_token_authorizer(self):
         admin_index = self.template.index("AdminFunction:")
         admin_block = self.template[admin_index : self.template.index("PreferenceFunction:")]

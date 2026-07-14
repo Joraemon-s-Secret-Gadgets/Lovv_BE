@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.app import handle_request
 
 
-def make_event(body, headers=None):
+def make_event(body, headers=None, path="/api/v1/recommendations"):
     return {
-        "rawPath": "/api/v1/recommendations",
+        "rawPath": path,
         "headers": headers or {},
         "requestContext": {"http": {"method": "POST"}},
         "body": json.dumps(body),
@@ -28,6 +28,56 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
     def tearDown(self):
         self.env_patcher.stop()
+
+    def test_calculates_authenticated_route_with_normalized_coordinates(self):
+        route = {
+            "provider": "kakao-mobility",
+            "profile": "driving",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[128.947, 37.771], [128.908, 37.805]],
+            },
+            "distanceMeters": 4200,
+            "durationSeconds": 780,
+            "segments": [{"distanceMeters": 4200, "durationSeconds": 780}],
+        }
+
+        with patch("agentcore.app.routing.calculate_route", return_value=route) as calculate_route:
+            response = handle_request(
+                make_event(
+                    {"coordinates": [[128.947, 37.771], [128.908, 37.805]]},
+                    path="/api/v1/routes",
+                )
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(json.loads(response["body"])["route"], route)
+        calculate_route.assert_called_once_with([[128.947, 37.771], [128.908, 37.805]])
+
+    def test_rejects_invalid_route_coordinates_before_provider_call(self):
+        with patch("agentcore.app.routing.calculate_route") as calculate_route:
+            response = handle_request(
+                make_event({"coordinates": [[128.947, 91], [128.908, 37.805]]}, path="/api/v1/routes")
+            )
+
+        body = json.loads(response["body"])
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        calculate_route.assert_not_called()
+
+    def test_route_provider_failure_returns_service_error_without_internal_detail(self):
+        with patch("agentcore.app.routing.calculate_route", side_effect=RuntimeError("secret provider detail")):
+            response = handle_request(
+                make_event(
+                    {"coordinates": [[128.947, 37.771], [128.908, 37.805]]},
+                    path="/api/v1/routes",
+                )
+            )
+
+        body = json.loads(response["body"])
+        self.assertEqual(response["statusCode"], 502)
+        self.assertEqual(body["error"]["code"], "ROUTE_UNAVAILABLE")
+        self.assertNotIn("secret provider detail", response["body"])
 
     def test_returns_mock_recommendation_without_bedrock_call(self):
         response = handle_request(
