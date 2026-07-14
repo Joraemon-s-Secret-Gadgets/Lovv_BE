@@ -9,6 +9,10 @@ EXPECTED_RUNTIME_ARN = (
     "arn:aws:bedrock-agentcore:us-east-1:925273580929:"
     "runtime/LovvAgentCore_LovvAgentV2-cy3tYk7nV4"
 )
+EXPECTED_KAKAO_MOBILITY_SSM_PATHS = {
+    "poc": "/lovv/poc/kakao_mobility/rest_api_key",
+    "prod": "/lovv/prod/kakao_mobility/rest_api_key",
+}
 
 
 def _yaml_parameter_value(path, parameter_key):
@@ -41,6 +45,15 @@ class AgentCorePipelineConfigTest(unittest.TestCase):
             if item.get("ParameterKey") == "AgentCoreRuntimeArn"
         )
         self.assertEqual(dev_runtime_arn, EXPECTED_RUNTIME_ARN)
+
+    def test_deployed_profiles_use_environment_specific_kakao_mobility_ssm_paths(self):
+        for profile, expected_path in EXPECTED_KAKAO_MOBILITY_SSM_PATHS.items():
+            with self.subTest(profile=profile):
+                value = _yaml_parameter_value(
+                    ROOT / "parameters" / f"{profile}.yaml",
+                    "KakaoMobilityRestApiKeySsmName",
+                )
+                self.assertEqual(value, expected_path)
 
     def test_sam_pipeline_injects_and_authorizes_only_the_selected_runtime(self):
         template = (ROOT / "template.yaml").read_text(encoding="utf-8")

@@ -266,6 +266,9 @@ Resources:
         'POST /api/v1/routes':
           ThrottlingBurstLimit: 5
           ThrottlingRateLimit: 2
+        'GET /api/v1/kakao-places/{placeId}/image':
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 5
       CorsConfiguration:
         AllowCredentials: true
         AllowHeaders:

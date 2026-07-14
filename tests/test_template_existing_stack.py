@@ -287,6 +287,19 @@ class ExistingDataStackTemplateTest(unittest.TestCase):
         self.assertIn("MemorySize: 128", block)
         self.assertIn("Path: /api/v1/kakao-places/{placeId}/image", block)
 
+    def test_kakao_place_image_route_has_bounded_throttling(self):
+        route_settings_index = self.template.index("RouteSettings:")
+        route_settings_block = self.template[
+            route_settings_index : self.template.index("CorsConfiguration:")
+        ]
+        route_index = route_settings_block.index(
+            "'GET /api/v1/kakao-places/{placeId}/image':"
+        )
+        route_block = route_settings_block[route_index : route_index + 150]
+
+        self.assertIn("ThrottlingBurstLimit: 20", route_block)
+        self.assertIn("ThrottlingRateLimit: 5", route_block)
+
     def test_agentcore_runtime_arn_is_environment_parameter(self):
         self.assertIn("AgentCoreRuntimeArn:", self.template)
         index = self.template.index("AgentCoreFunction:")
