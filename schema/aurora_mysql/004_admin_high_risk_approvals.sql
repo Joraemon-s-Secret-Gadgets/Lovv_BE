@@ -1,3 +1,8 @@
+-- @file schema/aurora_mysql/004_admin_high_risk_approvals.sql
+-- @description Applies rerunnable role constraints and creates high-risk approval and MFA storage tables.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Production migration for C2 high-risk admin approvals and MFA.
 -- Safe to run after an older 002_admin_console_tables.sql and safe to re-run.
 
@@ -133,3 +138,5 @@ CREATE TABLE IF NOT EXISTS admin_mfa_sessions (
   CONSTRAINT chk_admin_mfa_session_window
     CHECK (expires_at > verified_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- EOF: schema/aurora_mysql/004_admin_high_risk_approvals.sql

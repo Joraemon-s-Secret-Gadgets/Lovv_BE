@@ -1,3 +1,8 @@
+-- @file scripts/seed_dev_admin.sql
+-- @description Seeds fixed local admin identities and role assignments for repeatable development workflows.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Dev-only seed for local Docker MySQL (lovvdev).
 -- Creates an R-ADMIN and an R-DATA-PROVIDER user so the admin proposal -> review
 -- -> approve flow can be exercised end-to-end (admin cannot review own proposal,
@@ -20,3 +25,5 @@ SELECT u.id, u.display_name, a.role_code
 FROM users u JOIN user_role_assignments a ON a.user_id = u.id
 WHERE a.status = 'active'
 ORDER BY a.role_code;
+
+-- EOF: scripts/seed_dev_admin.sql

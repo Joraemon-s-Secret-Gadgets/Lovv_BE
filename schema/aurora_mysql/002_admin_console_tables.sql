@@ -1,3 +1,8 @@
+-- @file schema/aurora_mysql/002_admin_console_tables.sql
+-- @description Creates the Aurora MySQL foundation for admin access, review, publishing, metrics, and audit workflows.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Lovv Admin Console Aurora MySQL migration.
 -- Scope:
 --   1. Admin RBAC role/region assignments
@@ -361,3 +366,5 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
 -- They were previously duplicated here with an un-fixed FK/CHECK definition
 -- (ON UPDATE CASCADE on a column used in a CHECK constraint), which fails on
 -- MySQL 8.0 with errno 3823. Apply 004 after this migration to create them.
+
+-- EOF: schema/aurora_mysql/002_admin_console_tables.sql

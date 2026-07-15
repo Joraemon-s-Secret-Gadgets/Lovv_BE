@@ -1,3 +1,9 @@
+-- @file schema/aurora_mysql/005_add_itinerary_snapshot_json.sql
+-- @description Adds itinerary snapshot JSON storage only when the target column does not already exist.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
+-- Resolve the DDL at runtime so the migration remains safe when reapplied.
 SET @itinerary_json_exists := (
   SELECT COUNT(*)
   FROM INFORMATION_SCHEMA.COLUMNS
@@ -15,3 +21,5 @@ SET @add_itinerary_json_sql := IF(
 PREPARE add_itinerary_json_stmt FROM @add_itinerary_json_sql;
 EXECUTE add_itinerary_json_stmt;
 DEALLOCATE PREPARE add_itinerary_json_stmt;
+
+-- EOF: schema/aurora_mysql/005_add_itinerary_snapshot_json.sql

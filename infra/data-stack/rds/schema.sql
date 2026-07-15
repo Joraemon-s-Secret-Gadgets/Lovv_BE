@@ -1,3 +1,8 @@
+-- @file infra/data-stack/rds/schema.sql
+-- @description Defines the core MySQL tables for Lovv users, preferences, saved itineraries, items, and reactions.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Lovv Data Stack RDS 스키마
 -- 기준 문서: docs/SPEC/db_build_spec.md v0.1
 -- 서비스 API 보강 기준: docs/SPEC/service_api_schema_extension_spec.md v0.1
@@ -158,3 +163,5 @@ CREATE TABLE plan_reactions (
   CONSTRAINT chk_plan_reaction_type
     CHECK (reaction_type IN ('like', 'dislike'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- EOF: infra/data-stack/rds/schema.sql
