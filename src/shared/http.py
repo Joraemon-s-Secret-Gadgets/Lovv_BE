@@ -1,6 +1,7 @@
 # @file src/shared/http.py
 # @description Shared JSON response and CORS header helpers.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import json
 import os

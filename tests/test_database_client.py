@@ -1,3 +1,8 @@
+# @file tests/test_database_client.py
+# @description Tests database client mode selection and repository client wiring.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import unittest
@@ -51,3 +56,6 @@ class RepositoryClientSelectionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_database_client.py

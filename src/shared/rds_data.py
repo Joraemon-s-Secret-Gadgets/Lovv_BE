@@ -1,3 +1,8 @@
+# @file src/shared/rds_data.py
+# @description Wraps Aurora RDS Data API queries and transaction lifecycle handling.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 from contextlib import contextmanager
@@ -47,6 +52,7 @@ class RdsDataClient:
         transaction = _RdsDataTransaction(self, transaction_id)
         try:
             yield transaction
+            # The context boundary is the atomic commit point for all Data API statements.
             self.client.commit_transaction(
                 resourceArn=self.cluster_arn,
                 secretArn=self.secret_arn,
@@ -146,3 +152,6 @@ def _boto3_client():
     except ImportError as error:
         raise RdsDataConfigurationError("boto3 is required for Aurora Data API access") from error
     return boto3.client("rds-data")
+
+
+# EOF: src/shared/rds_data.py

@@ -1,3 +1,8 @@
+# @file tests/test_user_repository_authorization.py
+# @description Tests database-derived user roles, scopes, and authorization caching.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -103,3 +108,6 @@ class AuthzCacheIntegrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_user_repository_authorization.py

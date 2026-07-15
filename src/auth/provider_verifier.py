@@ -1,6 +1,7 @@
 # @file src/auth/provider_verifier.py
 # @description Verifies Google and Kakao identity credentials for Lovv auth.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import dataclasses
 import json

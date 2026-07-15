@@ -1,7 +1,13 @@
+# @file src/auth/authorizer.py
+# @description Validates bearer access tokens and builds API Gateway authorization context.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from shared.auth import AuthTokenError, extract_bearer_token, verify_access_token
 
 
 def lambda_handler(event, context):
+    # Only claims recovered from a verified token cross into the trusted authorizer context.
     try:
         token = _token_from_event(event or {})
         claims = verify_access_token(token)
@@ -49,3 +55,6 @@ def _token_from_event(event):
 
 def _deny(code):
     return {"isAuthorized": False, "context": {"error": code}}
+
+
+# EOF: src/auth/authorizer.py

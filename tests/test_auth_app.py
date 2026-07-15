@@ -1,3 +1,8 @@
+# @file tests/test_auth_app.py
+# @description Tests social auth, Cognito sessions, profile flows, refresh, and logout handling.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 import sys
@@ -935,3 +940,6 @@ class AuthAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_auth_app.py

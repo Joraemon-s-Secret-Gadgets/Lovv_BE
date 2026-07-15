@@ -1,3 +1,8 @@
+# @file tests/test_authorization.py
+# @description Tests authenticated principals and server-side role authorization rules.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import unittest
@@ -111,3 +116,6 @@ class AuthorizationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_authorization.py

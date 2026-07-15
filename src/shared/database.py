@@ -1,6 +1,7 @@
 # @file src/shared/database.py
 # @description Selects the database client for Lambda repositories.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import os
 

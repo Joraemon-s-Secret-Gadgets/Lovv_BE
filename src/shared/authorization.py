@@ -1,6 +1,7 @@
 # @file src/shared/authorization.py
 # @description Shared authenticated principal and role authorization helpers.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 from shared.current_user import authenticated_claims
 

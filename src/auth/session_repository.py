@@ -1,3 +1,8 @@
+# @file src/auth/session_repository.py
+# @description Persists, resolves, and revokes refresh sessions in DynamoDB or memory.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import time
 import uuid
@@ -45,6 +50,7 @@ class DynamoDbSessionRepository:
 
     def find_active_by_refresh_hash(self, refresh_token_hash, now_epoch=None):
         now = int(now_epoch if now_epoch is not None else time.time())
+        # The GSI lookup is only a candidate match; expiry and revocation are rechecked locally.
         response = self.table.query(
             IndexName="GSI1RefreshTokenHashLookup",
             KeyConditionExpression="#refreshTokenHash = :refreshTokenHash",
@@ -123,3 +129,6 @@ def _dynamodb_resource():
     except ImportError as error:
         raise SessionRepositoryError("AUTH_NOT_CONFIGURED", "boto3 is required for DynamoDB sessions") from error
     return boto3.resource("dynamodb")
+
+
+# EOF: src/auth/session_repository.py

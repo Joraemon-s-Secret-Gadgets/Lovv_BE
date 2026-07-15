@@ -1,6 +1,7 @@
 # @file src/auth/user_repository.py
 # @description User and social account repository for Lovv auth persistence.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import dataclasses
 import os

@@ -1,3 +1,8 @@
+# @file tests/test_provider_verifier.py
+# @description Tests Google and Kakao credential exchange and identity verification boundaries.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import unittest
@@ -223,3 +228,6 @@ class ProviderVerifierTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_provider_verifier.py
