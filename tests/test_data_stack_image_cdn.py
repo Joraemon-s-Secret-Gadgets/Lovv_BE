@@ -1,3 +1,8 @@
+# @file tests/test_data_stack_image_cdn.py
+# @description Verifies private S3 image delivery through CloudFront OAC and published CDN identifiers.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 from pathlib import Path
 
@@ -81,3 +86,5 @@ class DataStackImageCdnTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_data_stack_image_cdn.py
