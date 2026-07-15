@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/verify_schema.py
+# @description Verify expected tables for Aurora MySQL migrations 001 through 004 and the Super Admin role constraint.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only check: confirm ALL schema/aurora_mysql migrations (001-004) are applied.
 
 This project has no migration-version table, so application state is verified by
@@ -122,3 +126,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/verify_schema.py

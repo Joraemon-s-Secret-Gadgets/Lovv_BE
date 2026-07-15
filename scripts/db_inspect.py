@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/db_inspect.py
+# @description Inspect live Aurora MySQL schema details and the latest InnoDB foreign-key failure for migration diagnosis.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only: diagnose the admin migration FK failure against the live DB.
 
 Run with the SSM tunnel open (RDS_LOCAL_PORT) and RDS_SECRET_ARN set, same as
@@ -68,3 +72,5 @@ try:
             print("(no recent foreign key error recorded)")
 finally:
     conn.close()
+
+# EOF: scripts/db_inspect.py

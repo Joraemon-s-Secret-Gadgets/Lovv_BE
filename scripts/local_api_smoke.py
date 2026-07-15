@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/local_api_smoke.py
+# @description Exercise frontend-facing backend handler contracts with fake provider verification and in-memory repositories.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Run a local handler-level smoke test for Lovv backend API contracts.
 
 This script does not read real .env files or call provider services. It uses
@@ -373,3 +377,5 @@ if __name__ == "__main__":
     except SmokeFailure as error:
         print(f"FAIL {error}", file=sys.stderr)
         raise SystemExit(1)
+
+# EOF: scripts/local_api_smoke.py

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/apply_admin_migration.py
+# @description Apply a selected Aurora MySQL admin migration to the configured development database.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only: apply a schema/aurora_mysql/*.sql migration to the target DB.
 
     python scripts/apply_admin_migration.py            # default: 002 admin console
@@ -85,6 +89,7 @@ def main():
     conn = pymysql.connect(host=host, port=port, user=user, password=password, database=database, autocommit=False)
     try:
         with conn.cursor() as cur:
+            # Each statement mutates the shared dev schema; failure may leave committed DDL behind.
             for index, statement in enumerate(statements, start=1):
                 head = statement.splitlines()[0][:70]
                 print(f"  [{index}/{len(statements)}] {head} ...")
@@ -98,3 +103,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# EOF: scripts/apply_admin_migration.py

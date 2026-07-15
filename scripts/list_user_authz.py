@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/list_user_authz.py
+# @description List user role and regional authorization assignments from the configured development database.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only: list users' admin authority (role + region assignments).
 
 Lists every user that has at least one role or region assignment, with their
@@ -106,3 +110,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/list_user_authz.py
