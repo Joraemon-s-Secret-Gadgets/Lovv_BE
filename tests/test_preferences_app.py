@@ -1,3 +1,8 @@
+# @file tests/test_preferences_app.py
+# @description API tests for authenticated preference retrieval, validation, persistence, and CORS behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 import sys
@@ -226,3 +231,5 @@ class PreferencesAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_preferences_app.py

@@ -1,6 +1,7 @@
 # @file src/agentcore/app.py
 # @description AWS Bedrock Agent를 활용한 AI 기반 소도시 일정 생성 및 대화 인터페이스 핵심 Lambda 핸들러.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import base64
 import hashlib
@@ -713,3 +714,6 @@ def _event_path(event):
 def _now_iso():
     """현재 시간을 UTC 기준 ISO 8601 포맷으로 변환"""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# EOF: src/agentcore/app.py

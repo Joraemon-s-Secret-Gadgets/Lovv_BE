@@ -1,3 +1,8 @@
+# @file tests/test_recommendations_app.py
+# @description API and service tests for monthly, popular, and demographic destination recommendations.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import unittest
 from datetime import datetime
@@ -234,3 +239,5 @@ class RecommendationFeedAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_recommendations_app.py

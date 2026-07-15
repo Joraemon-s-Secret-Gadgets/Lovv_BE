@@ -1,3 +1,8 @@
+# @file src/recommendations/app.py
+# @description Lambda request routing for monthly, popular, and reaction-based destination recommendations.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from recommendations.reaction_repository import RdsRecommendationReactionRepository
 from recommendations.service import (
     RecommendationValidationError,
@@ -83,3 +88,6 @@ def _event_method(event):
 
 def _event_path(event):
     return event.get("rawPath") or event.get("path") or ""
+
+
+# EOF: src/recommendations/app.py

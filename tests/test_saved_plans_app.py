@@ -1,3 +1,8 @@
+# @file tests/test_saved_plans_app.py
+# @description API tests for saved itinerary creation, validation, listing, reactions, sharing, and cloning.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 import sys
@@ -718,3 +723,5 @@ class SavedPlansAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_saved_plans_app.py

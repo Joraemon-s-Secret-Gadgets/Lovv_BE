@@ -1,3 +1,8 @@
+# @file tests/test_agentcore_pipeline_config.py
+# @description Configuration contract tests for the AgentCore deployment pipeline and SAM template.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import re
 import unittest
@@ -92,3 +97,5 @@ class AgentCorePipelineConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_agentcore_pipeline_config.py

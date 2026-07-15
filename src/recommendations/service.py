@@ -1,3 +1,8 @@
+# @file src/recommendations/service.py
+# @description Recommendation signal validation, aggregation, ranking, and city response mapping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from datetime import datetime
 from collections import Counter
 from zoneinfo import ZoneInfo
@@ -399,3 +404,6 @@ def _signal_country(signal):
     if isinstance(city_id, str) and city_id.startswith("KR-"):
         return "KR"
     return None
+
+
+# EOF: src/recommendations/service.py

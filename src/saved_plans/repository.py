@@ -1,6 +1,7 @@
 # @file src/saved_plans/repository.py
 # @description Saved itinerary repository backed by the configured SQL client.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import hashlib
 import os

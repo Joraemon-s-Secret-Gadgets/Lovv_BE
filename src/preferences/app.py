@@ -1,6 +1,7 @@
 # @file src/preferences/app.py
 # @description 인증된 사용자의 온보딩 취향 설정을 RDS MySQL에 로드 및 저장하는 Lambda 핸들러.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import base64
 import json

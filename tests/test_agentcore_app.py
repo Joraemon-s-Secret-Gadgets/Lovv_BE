@@ -1,3 +1,8 @@
+# @file tests/test_agentcore_app.py
+# @description Unit tests for AgentCore request validation, runtime invocation, and recommendation response mapping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import hashlib
 import json
 import os
@@ -502,3 +507,5 @@ class AgentCoreMockAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_agentcore_app.py

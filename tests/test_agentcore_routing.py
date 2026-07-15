@@ -1,3 +1,8 @@
+# @file tests/test_agentcore_routing.py
+# @description Unit tests for Kakao Mobility route fetching, chunking, enrichment, and fallback behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import threading
@@ -256,3 +261,5 @@ class AgentCoreRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_agentcore_routing.py
