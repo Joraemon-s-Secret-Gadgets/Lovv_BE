@@ -1,3 +1,8 @@
+# @file tests/test_admin_proposals_repository.py
+# @description Verifies proposal repository transactions, transitions, and row visibility.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -276,3 +281,6 @@ class AdminProposalRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_proposals_repository.py

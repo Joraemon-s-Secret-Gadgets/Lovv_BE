@@ -9,6 +9,11 @@ S3 이미지 매핑 테이블(image_map.json)을 사용해서
     "KR-Andong/AndongBeopheungsajiChilcheungjeontap"
 """
 
+# @file src/small_cities/image_resolver.py
+# @description 소도시 이미지 매핑과 결정적 도시 fallback을 사용해 CloudFront 이미지 URL을 해석한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from __future__ import annotations
 
 import json
@@ -226,6 +231,9 @@ def _resolve_city_fallback_url(
     if not city_images:
         return None
 
+    # 프로세스마다 달라지는 hash() 대신 SHA-256을 사용해 같은 제목이 항상 같은 fallback 이미지를 선택하게 한다.
     digest = hashlib.sha256(title.encode("utf-8")).hexdigest()
     selected = city_images[int(digest[:8], 16) % len(city_images)]
     return f"{cdn_base.rstrip('/')}/{selected}"
+
+# EOF: src/small_cities/image_resolver.py

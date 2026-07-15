@@ -1,3 +1,8 @@
+# @file tests/test_admin_publish_jobs_app.py
+# @description Verifies publish-job creation, transitions, retry handling, and scoping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -164,3 +169,6 @@ class PublishJobApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_publish_jobs_app.py

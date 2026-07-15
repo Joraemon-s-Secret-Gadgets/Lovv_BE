@@ -1,3 +1,8 @@
+# @file tests/test_recommendations_repository.py
+# @description Repository tests for recommendation reaction signal queries and row mapping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 from pathlib import Path
 import sys
@@ -91,3 +96,5 @@ class RecommendationReactionRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_recommendations_repository.py

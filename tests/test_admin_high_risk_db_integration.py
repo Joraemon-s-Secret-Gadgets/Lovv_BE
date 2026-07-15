@@ -1,3 +1,8 @@
+# @file tests/test_admin_high_risk_db_integration.py
+# @description Verifies transactional high-risk approval behavior against MySQL.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import threading
@@ -207,3 +212,6 @@ class RdsDataApiLiveTransactionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_high_risk_db_integration.py

@@ -1,3 +1,8 @@
+# @file tests/test_s3_raw_city_repository.py
+# @description S3 원천 소도시 저장소의 문서 변환, 집계 및 이미지 해석을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -214,3 +219,5 @@ class S3RawCityRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_s3_raw_city_repository.py

@@ -1,6 +1,7 @@
 # @file src/shared/logger.py
 # @description Standardized tag-based logger for Lovv Lambda handlers.
-# @lastModified 2026-06-18
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 """Standardized tag-based logger for the Lovv backend.
 
@@ -143,3 +144,6 @@ def get_logger(name: str) -> TaggedLogger:
     """Return a TaggedLogger for the given module name (pass __name__)."""
     _configure_root_once()
     return TaggedLogger(logging.getLogger(name))
+
+
+# EOF: src/shared/logger.py

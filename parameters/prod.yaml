@@ -1,3 +1,9 @@
+# @file parameters/prod.yaml
+# @description Supplies production deployment values for the Lovv SAM application stack.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
+# Placeholder identifiers must be replaced through the production deployment process.
 - ParameterKey: EnvName
   ParameterValue: "prod"
 - ParameterKey: LogRetentionInDays
@@ -98,3 +104,5 @@
   ParameterValue: "itinerary_items"
 - ParameterKey: PlanReactionsTableName
   ParameterValue: "plan_reactions"
+
+# EOF: parameters/prod.yaml

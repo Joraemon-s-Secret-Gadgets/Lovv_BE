@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/build_image_map.py
+# @description Build a Korean attraction image lookup JSON from objects in the Lovv development S3 image bucket.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """
 S3 이미지 버킷(lovv-image-dev-*)을 스캔해서
 { "KR-Cheongdo/청도박물관": "images/KR/Cheongdo/Cheongdobakmulwan_1.jpg" }
@@ -150,6 +154,7 @@ def main():
 
     mapping = build_image_map(s3)
 
+    # Opening in write mode replaces any existing map, so review --output before running.
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump({"cdnBase": CDN_BASE, "images": mapping}, f, ensure_ascii=False, indent=2)
 
@@ -158,3 +163,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# EOF: scripts/build_image_map.py

@@ -1,3 +1,8 @@
+-- @file scripts/admin_access_attestation.sql
+-- @description Reports active role and region assignments for quarterly administrative access review.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Quarterly access-attestation inventory. Read-only: export the result as the
 -- review input, then execute approved revocations through the controlled
 -- role/region administration path when that API is available.
@@ -55,3 +60,5 @@ WHERE a.status = 'active'
   AND (a.valid_until IS NULL OR a.valid_until > UTC_TIMESTAMP(3))
 
 ORDER BY user_id, assignment_type, assignment_value;
+
+-- EOF: scripts/admin_access_attestation.sql

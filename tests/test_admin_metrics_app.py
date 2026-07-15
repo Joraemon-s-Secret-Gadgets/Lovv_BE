@@ -1,3 +1,8 @@
+# @file tests/test_admin_metrics_app.py
+# @description Verifies destination metrics recording, aggregation, and access scoping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -201,3 +206,6 @@ class AdminMetricsApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_metrics_app.py

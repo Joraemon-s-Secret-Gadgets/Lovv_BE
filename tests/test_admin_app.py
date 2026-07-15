@@ -1,3 +1,8 @@
+# @file tests/test_admin_app.py
+# @description Verifies admin Lambda routing, authorization, and response behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 import sys
@@ -246,3 +251,6 @@ class AdminAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_app.py

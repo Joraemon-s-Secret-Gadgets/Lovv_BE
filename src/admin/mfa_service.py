@@ -1,3 +1,8 @@
+# @file src/admin/mfa_service.py
+# @description Implements admin MFA enrollment, verification, recovery, and session checks.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import base64
 import hashlib
 import hmac
@@ -166,6 +171,8 @@ class AdminMfaService:
         secret = self.cipher.decrypt(credential["encryptedSecret"])
         totp = pyotp.TOTP(secret)
         current_counter = int(self.now_provider().timestamp()) // totp.interval
+        # Permit one time step of clock skew; the repository's conditional
+        # counter update remains the final cross-request replay guard.
         for counter in range(current_counter - 1, current_counter + 2):
             if hmac.compare_digest(totp.at(counter * totp.interval), code):
                 last_counter = credential.get("lastUsedCounter")
@@ -245,3 +252,6 @@ def _iso(value):
 def _kms_client():
     import boto3
     return boto3.client("kms")
+
+
+# EOF: src/admin/mfa_service.py

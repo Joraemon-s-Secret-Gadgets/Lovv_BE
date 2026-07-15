@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/bootstrap_super_admin.py
+# @description Bootstrap the first global Super Admin assignment with locking, audit logging, and cache invalidation.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """One-time break-glass bootstrap for the first R-SUPER-ADMIN assignment.
 
 Dry-run (default):
@@ -109,6 +113,7 @@ def main(argv=None):
         print("Dry-run only. Add --execute after independent review.")
         return 0
 
+    # --execute crosses the break-glass boundary and writes the privileged assignment and audit record.
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     result = bootstrap(MySqlClient(), args.target_user_id, operator, reason, now)
     cache = DynamoDbAuthzCacheRepository.from_env()
@@ -120,3 +125,5 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/bootstrap_super_admin.py

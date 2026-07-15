@@ -1,3 +1,8 @@
+-- @file schema/aurora_mysql/003_admin_operations_tables.sql
+-- @description Creates admin notice and recommendation policy tables for operational management.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Lovv Admin Console operations tables
 -- Step 16: notices and recommendation policy management.
 
@@ -69,3 +74,5 @@ CREATE TABLE IF NOT EXISTS admin_recommendation_policies (
   CONSTRAINT chk_admin_policy_valid_window
     CHECK (effective_until IS NULL OR effective_from IS NULL OR effective_until > effective_from)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- EOF: schema/aurora_mysql/003_admin_operations_tables.sql

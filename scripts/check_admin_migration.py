@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/check_admin_migration.py
+# @description Verify that every table from the 002 admin console migration exists in the target database.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only check: confirm the 002 admin console tables exist in the target DB.
 
 Run this while an SSM port-forward to dev RDS is open on 127.0.0.1:3306.
@@ -90,3 +94,5 @@ if missing:
 
 print("\nAll admin console tables are present. 002 migration is applied.")
 sys.exit(0)
+
+# EOF: scripts/check_admin_migration.py

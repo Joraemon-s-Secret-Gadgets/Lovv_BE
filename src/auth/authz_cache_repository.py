@@ -1,6 +1,7 @@
 # @file src/auth/authz_cache_repository.py
 # @description Short-TTL cache of derived admin authorization (roles/org/region).
-# @lastModified 2026-06-24
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Deriving a user's authority from MySQL (role + region assignments) runs on every
 # login / session refresh. This caches the derived result in DynamoDB keyed by
@@ -139,3 +140,6 @@ def _dynamodb_resource():
     import boto3
 
     return boto3.resource("dynamodb")
+
+
+# EOF: src/auth/authz_cache_repository.py

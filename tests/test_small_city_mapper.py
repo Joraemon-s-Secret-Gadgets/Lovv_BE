@@ -1,3 +1,8 @@
+# @file tests/test_small_city_mapper.py
+# @description 소도시 레코드 매핑, 테마 정규화, 조사 선택 및 서비스 필터링을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 from pathlib import Path
 import sys
@@ -218,3 +223,5 @@ class SmallCityMapperTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_small_city_mapper.py

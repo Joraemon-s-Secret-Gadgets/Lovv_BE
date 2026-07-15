@@ -1,6 +1,7 @@
 # @file src/admin/repository.py
 # @description Read-only admin user repository backed by the configured SQL client.
-# @lastModified 2026-06-14
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Read-only aggregate view of users for the admin console (profile + linked
 # providers + onboarding flag + saved-itinerary count). No writes here.

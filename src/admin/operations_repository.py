@@ -1,6 +1,7 @@
 # @file src/admin/operations_repository.py
 # @description Admin notices and recommendation policy repository.
-# @lastModified 2026-06-24
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Step 16 PoC: R-ADMIN can manage operator notices and recommendation policy
 # records. These records are operational control-plane data, so only aggregate
@@ -376,3 +377,6 @@ def _policy_from_row(row):
         "createdAt": row.get("created_at"),
         "updatedAt": row.get("updated_at"),
     }
+
+
+# EOF: src/admin/operations_repository.py

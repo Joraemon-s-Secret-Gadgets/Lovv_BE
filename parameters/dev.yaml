@@ -1,3 +1,9 @@
+# @file parameters/dev.yaml
+# @description Supplies development deployment values for the Lovv SAM application stack.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
+# Values marked UsePreviousValue retain secrets already stored by CloudFormation.
 - ParameterKey: AllowedCorsOrigin
   ParameterValue: "http://127.0.0.1:5173,http://localhost:5173,https://d3nuef0zacpyj.cloudfront.net,https://dkyiemfaw3g04.cloudfront.net,https://lovv.site,https://www.lovv.site,https://admin.lovv.site,https://lovv-admin-web.vercel.app,https://lovv-admin-web-skn26.vercel.app,https://lovv-admin-web-eta.vercel.app,https://main.d3ptepzjkkzwx4.amplifyapp.com"
 - ParameterKey: MapCityS3Bucket
@@ -98,3 +104,5 @@
   ParameterValue: "itinerary_items"
 - ParameterKey: PlanReactionsTableName
   ParameterValue: "plan_reactions"
+
+# EOF: parameters/dev.yaml

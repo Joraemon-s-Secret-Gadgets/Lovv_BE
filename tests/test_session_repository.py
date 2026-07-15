@@ -1,3 +1,8 @@
+# @file tests/test_session_repository.py
+# @description Tests active refresh session lookup and DynamoDB query behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -51,3 +56,6 @@ class DynamoDbSessionRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_session_repository.py

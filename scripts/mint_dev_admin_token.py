@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/mint_dev_admin_token.py
+# @description Mint a short-lived development admin access token using the deployed authorizer's Secrets Manager key.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only: mint a short-lived Lovv access token signed with the DEV JWT secret.
 
 Used to smoke-test the deployed dev admin API. The token's roles come from the
@@ -38,6 +42,7 @@ role = os.environ.get("MINT_ROLE", "R-ADMIN")
 org_ids = [v for v in os.environ.get("MINT_ORG_IDS", "").split(",") if v]
 region_ids = [v for v in os.environ.get("MINT_REGION_IDS", "").split(",") if v]
 
+# The resulting bearer token carries live dev privileges and is intentionally emitted only to stdout.
 token = create_access_token(
     user_id=os.environ.get("MINT_USER_ID", "smoke-" + role.lower()),
     session_id=os.environ.get("MINT_SESSION_ID", "smoke-session"),
@@ -46,3 +51,5 @@ token = create_access_token(
     region_ids=region_ids,
 ).token
 print(token)
+
+# EOF: scripts/mint_dev_admin_token.py

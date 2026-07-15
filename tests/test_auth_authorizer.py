@@ -1,3 +1,8 @@
+# @file tests/test_auth_authorizer.py
+# @description Tests bearer token validation and API Gateway authorizer decisions.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import unittest
@@ -139,3 +144,6 @@ class AuthAuthorizerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_auth_authorizer.py

@@ -1,6 +1,7 @@
 # @file src/agentcore/routing.py
 # @description Optional Kakao Mobility itinerary route enrichment for AgentCore results.
-# @lastModified 2026-07-14
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import json
 import math
@@ -309,3 +310,6 @@ def _timeout_seconds():
     if value <= 0:
         return DEFAULT_KAKAO_MOBILITY_TIMEOUT_SECONDS
     return min(value, 10.0)
+
+
+# EOF: src/agentcore/routing.py

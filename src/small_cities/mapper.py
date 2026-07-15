@@ -1,3 +1,8 @@
+# @file src/small_cities/mapper.py
+# @description 소도시 원천 항목을 프론트엔드 API 도시 레코드로 정규화하고 집계한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from collections import Counter
 from decimal import Decimal
 from urllib.parse import urlparse
@@ -247,3 +252,5 @@ def build_city_api_record(metadata, items, source="S3RawCityDetails", source_key
             "visitorStatisticsCount": visitor_statistics_count,
         },
     }
+
+# EOF: src/small_cities/mapper.py

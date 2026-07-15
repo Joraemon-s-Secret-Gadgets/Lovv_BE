@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/verify_authz_cache.py
+# @description Verify authorization-cache put, get, and invalidation behavior against the configured live DynamoDB table.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only check: prove authz cache invalidate() actually deletes from DynamoDB.
 
 Round-trips a throwaway test key through the real repository:
@@ -61,6 +65,7 @@ def main():
     print(f"Table: {cache.table_name}")
     print(f"Probe userId: {TEST_UID} (not a real user)\n")
 
+    # This probe writes and deletes a reserved non-user key in the configured live table.
     try:
         put_item = cache.put(TEST_UID, PROBE)
         got = cache.get(TEST_UID)
@@ -94,3 +99,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/verify_authz_cache.py

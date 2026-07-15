@@ -1,3 +1,8 @@
+# @file src/shared/auth.py
+# @description Creates, verifies, and extracts signed Lovv access tokens.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import base64
 import dataclasses
 import hashlib
@@ -88,6 +93,7 @@ def verify_access_token(token, now=None):
 
     encoded_header, encoded_claims, signature = parts
     signing_input = f"{encoded_header}.{encoded_claims}"
+    # Constant-time comparison keeps signature validity from leaking through timing differences.
     expected_signature = _sign(signing_input)
     if not hmac.compare_digest(signature, expected_signature):
         raise AuthTokenError("INVALID_TOKEN_SIGNATURE", "Invalid token signature")
@@ -240,3 +246,6 @@ def _env_value(name, default):
     if value is None or value == "":
         return default
     return value
+
+
+# EOF: src/shared/auth.py

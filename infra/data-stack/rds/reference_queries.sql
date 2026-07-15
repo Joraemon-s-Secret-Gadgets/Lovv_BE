@@ -1,3 +1,8 @@
+-- @file infra/data-stack/rds/reference_queries.sql
+-- @description Provides parameterized reference queries for authentication, preferences, itineraries, and reactions.
+-- @author JJonyeok2
+-- @lastModified 2026-07-15
+
 -- Lovv Data Stack RDS 참조 쿼리
 -- 기준 문서: docs/PRD/db_build_prd.md section 3.4
 -- 서비스 API 보강 기준: docs/SPEC/service_api_schema_extension_spec.md v0.1
@@ -132,3 +137,5 @@ WHERE source_recommendation_id IS NOT NULL
   AND snapshot_hash IS NOT NULL
 GROUP BY user_id, source_recommendation_id, snapshot_hash
 HAVING COUNT(*) > 1;
+
+-- EOF: infra/data-stack/rds/reference_queries.sql

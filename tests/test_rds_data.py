@@ -1,3 +1,8 @@
+# @file tests/test_rds_data.py
+# @description Tests Aurora RDS Data API transaction commit and rollback behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -53,3 +58,6 @@ class RdsDataTransactionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_rds_data.py

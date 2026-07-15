@@ -1,6 +1,7 @@
 # @file src/admin/metrics_repository.py
 # @description Daily metrics repository for monthly curated destinations.
-# @lastModified 2026-06-24
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Stores B2G-safe aggregate counters in destination_metrics_daily. This PoC
 # records only daily aggregate increments, not raw user-level event logs.
@@ -323,3 +324,5 @@ def _camel_metric_field(field):
 def _date_text(value):
     return value.isoformat() if hasattr(value, "isoformat") else value
 
+
+# EOF: src/admin/metrics_repository.py

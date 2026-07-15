@@ -1,6 +1,7 @@
 # @file src/admin/monthly_destinations_repository.py
 # @description Monthly curated destination repository (candidate -> publish state).
-# @lastModified 2026-06-24
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Owns the monthly_curated_destinations lifecycle: an approved data proposal is
 # promoted into a "candidate", then moved through its publish state machine. The
@@ -341,3 +342,6 @@ def _optional_text(value):
         return value
     text = value.strip()
     return text or None
+
+
+# EOF: src/admin/monthly_destinations_repository.py

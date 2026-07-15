@@ -1,3 +1,8 @@
+# @file template.yaml
+# @description Defines the Lovv SAM API, Lambda integrations, authorization, and existing data-stack connections.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Lovv backend API for social auth, preferences, map/city, mock recommendations, and saved plans.
@@ -1416,3 +1421,5 @@ Outputs:
     Condition: CreateCognitoPoC
     Description: Cognito JWT issuer for API Gateway JWT authorizer.
     Value: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${LovvCognitoUserPool}
+
+# EOF: template.yaml

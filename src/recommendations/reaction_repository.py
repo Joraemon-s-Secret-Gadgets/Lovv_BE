@@ -1,3 +1,8 @@
+# @file src/recommendations/reaction_repository.py
+# @description SQL-backed reader for saved-plan reaction signals used by destination recommendations.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 
 from shared.database import create_database_client
@@ -78,3 +83,6 @@ def _popular_signal_from_row(row):
         "savedAt": row.get("saved_at"),
         "birthDate": row.get("birth_date"),
     }
+
+
+# EOF: src/recommendations/reaction_repository.py

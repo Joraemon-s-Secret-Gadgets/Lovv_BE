@@ -1,3 +1,8 @@
+# @file tests/test_template_existing_stack.py
+# @description Verifies that the SAM template reuses data-stack resources and preserves API security contracts.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 from pathlib import Path
 
@@ -362,3 +367,5 @@ class ExistingDataStackSchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_template_existing_stack.py

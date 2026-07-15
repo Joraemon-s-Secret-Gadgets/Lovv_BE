@@ -1,3 +1,8 @@
+# @file tests/test_saved_plans_repository.py
+# @description Repository tests for saved itinerary SQL persistence, rehydration, reactions, sharing, and cloning.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 from pathlib import Path
 import sys
@@ -370,3 +375,5 @@ class SavedPlansRepositorySchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_saved_plans_repository.py

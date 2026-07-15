@@ -1,6 +1,7 @@
 # @file src/shared/current_user.py
 # @description Resolves authenticated user claims from API Gateway context or bearer JWT.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 from shared.auth import extract_bearer_token, verify_access_token
 

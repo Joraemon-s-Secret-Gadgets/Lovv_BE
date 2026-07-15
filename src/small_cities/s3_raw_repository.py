@@ -1,3 +1,8 @@
+# @file src/small_cities/s3_raw_repository.py
+# @description S3 원천 소도시 문서를 조회하고 API용 도시 및 장소 응답으로 변환한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 
@@ -383,3 +388,5 @@ def _s3_client():
     except ImportError as error:
         raise RuntimeError("boto3 is required in the Lambda runtime.") from error
     return boto3.client("s3")
+
+# EOF: src/small_cities/s3_raw_repository.py

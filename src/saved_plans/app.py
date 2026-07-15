@@ -1,6 +1,7 @@
 # @file src/saved_plans/app.py
 # @description 사용자가 저장한 여행 일정(itinerary)의 조회, 신규 생성, 삭제 및 좋아요 반응 상태를 RDS MySQL에 기록하는 Lambda 핸들러.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import base64
 import json

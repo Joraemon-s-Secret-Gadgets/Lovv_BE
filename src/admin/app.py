@@ -1,6 +1,7 @@
 # @file src/admin/app.py
 # @description Admin console Lambda handler for Lovv API.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Routes the admin console endpoints (users + data-proposal workflow). Every
 # branch authorizes against the verified token via shared.authorization, and

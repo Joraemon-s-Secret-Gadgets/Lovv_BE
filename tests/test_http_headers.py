@@ -1,3 +1,8 @@
+# @file tests/test_http_headers.py
+# @description Tests shared CORS defaults and JSON response header behavior.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import unittest
@@ -55,3 +60,6 @@ class HttpHeadersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_http_headers.py

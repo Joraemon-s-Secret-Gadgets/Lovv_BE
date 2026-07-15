@@ -1,6 +1,7 @@
 # @file src/shared/mysql_data.py
 # @description Direct MySQL adapter for existing Lovv Data Stack RDS.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import json
 import os
@@ -84,6 +85,7 @@ class MySqlClient:
         transaction = _MySqlTransaction(connection)
         try:
             yield transaction
+            # Commit only after every operation in the caller-managed unit succeeds.
             connection.commit()
         except Exception:
             connection.rollback()

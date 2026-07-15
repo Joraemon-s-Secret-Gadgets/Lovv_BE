@@ -1,163 +1,273 @@
-# Lovv Backend (BE)
+# Lovv Backend
 
-Lovv 서비스의 AWS SAM(Serverless Application Model) 기반 서버리스 백엔드 애플리케이션입니다. Amazon API Gateway, AWS Lambda, Amazon Aurora MySQL, Amazon DynamoDB, Amazon S3를 연동하여 안전하고 확장 가능한 백엔드 API를 제공합니다.
+Lovv 여행 추천 서비스의 AWS SAM 기반 서버리스 백엔드입니다. 소셜 로그인과
+세션, 사용자 선호도, 소도시 데이터, AgentCore V2 일정 추천, Kakao Mobility
+경로 계산, 일정 저장 및 관리자 운영 API를 제공합니다.
 
----
+## 기술 스택
 
-## 🛠 Tech Stack & Architecture
+- Python 3.12, AWS SAM, AWS Lambda (arm64)
+- Amazon API Gateway HTTP API
+- Amazon Aurora MySQL: 사용자, 선호도, 저장 일정, 관리자 운영 데이터
+- Amazon DynamoDB: refresh session 및 관리자 권한 캐시 TTL
+- Amazon S3/DynamoDB: 소도시 원천 데이터와 조회 인덱스
+- Amazon Bedrock AgentCore Runtime V2: 일정 생성 및 수정
+- Kakao Mobility Directions API: 일정 동선, 구간 거리 및 시간 계산
+- AWS Secrets Manager와 Systems Manager Parameter Store: 런타임 비밀값
 
-- **Framework**: AWS SAM (Serverless Application Model)
-- **Runtime**: Python 3.12
-- **API Gateway**: Amazon API Gateway (REST API & Cognito JWT Authorizer)
-- **Database**:
-  - **Amazon Aurora MySQL**: VPC 내부의 관계형 데이터베이스로, 사용자 정보(`users`), 소셜 계정 연동(`social_accounts`), 취향 선호도(`user_preferences`), 저장한 일정(`itineraries`, `itinerary_items`, `plan_reactions`) 데이터를 보관합니다.
-  - **Amazon DynamoDB**: TTL(Time-To-Live) 기반의 세션 관리용 저장소(`auth_sessions`)로 사용됩니다.
-- **Object Storage**:
-  - **Amazon S3**: 한국/일본 소도시 상세 정보(명소, 축제, 통계 등)를 포함하는 원천 JSON 데이터를 적재 및 조회하는 용도로 사용됩니다.
+## 시스템 구성
 
----
+![Lovv backend system overview](docs/architecture/lovv-system-overview.svg)
 
-## 🌐 API Endpoints
+```text
+Web Client
+   |
+   v
+API Gateway HTTP API
+   |
+   +-- Auth Lambda ---------- DynamoDB sessions / Aurora MySQL
+   +-- Preferences Lambda --- Aurora MySQL
+   +-- AgentCore Lambda ----- Bedrock AgentCore V2 / Kakao Mobility
+   +-- Saved Plans Lambda --- Aurora MySQL
+   +-- Small Cities Lambda -- S3 / DynamoDB / image CDN
+   +-- Admin Lambda --------- Aurora MySQL / DynamoDB authz cache
+```
 
-### 1. 인증 및 세션 (Auth)
-- **`POST /api/v1/auth/google`**: Google ID Token 또는 Authorization Code 검증 및 로그인 처리.
-- **`POST /api/v1/auth/kakao`**: Kakao ID Token 또는 Authorization Code 검증 및 로그인 처리.
-- **`POST /api/v1/auth/cognito/session`**: Cognito JWT Authorizer가 검증한 클레임을 Lovv 세션으로 연동(Bridge).
-- **`GET /api/v1/auth/session`**: HttpOnly Secure 쿠키(`lovv_session`)에 담긴 refresh token 기반 세션 연환 및 복원.
-- **`GET /api/v1/auth/me`**: 현재 로그인된 사용자의 상세 프로필 조회.
-- **`POST /api/v1/auth/logout`**: 활성 세션을 파기하고 브라우저 쿠키를 만료 처리.
+세부 인증 흐름과 데이터 모델은 다음 문서를 참고합니다.
 
-### 2. 사용자 취향 선호도 (Preferences)
-- **`GET /api/v1/me/preferences`**: 현재 사용자의 맞춤 여행 선호도 프로필 조회.
-- **`PUT /api/v1/me/preferences`**: 취향 온보딩 결과 또는 마이페이지에서의 선호도 업데이트.
+- [인증 흐름](docs/architecture/lovv-auth-flow.svg)
+- [데이터 모델](docs/architecture/lovv-data-model.svg)
+- [관리자 RBAC 명세](docs/specs/ADMIN_RBAC_SPEC.md)
+- [관리자 운영 Runbook](docs/specs/ADMIN_OPERATIONS_RUNBOOK.md)
 
-### 3. 소도시 및 지도 데이터 (Map/Cities)
-- **`GET /api/small-cities`**: 소도시 목록 마커 정보 조회 (CORS 및 위도/경도 데이터 포함).
-- **`GET /api/small-cities/{cityId}`**: 특정 소도시의 상세 메타데이터 조회.
-- **`GET /api/small-cities/{cityId}/places`**: 소도시 내 명소(`attractions`) 및 축제(`festivals`) 정보 조회 (S3 연동).
+## 주요 API
 
-### 4. AI 일정 추천 (AgentCore V2)
-- **`POST /api/v1/recommendations`**: 여행 테마, 일정 기간, 축제 포함 여부를 V2 요청 계약으로 변환하여 Bedrock AgentCore Runtime을 호출합니다.
-- `create`, `clarify`, `modify`, `confirm` 흐름은 동일한 `sessionId`/`threadId`로 연결됩니다.
-- Runtime ARN은 `AgentCoreRuntimeArn` SAM 파라미터로 주입하며 Lambda 소스에 하드코딩하지 않습니다.
-- 추천 API는 Lovv access token을 요구하며, 공개 Lambda Function URL은 사용하지 않습니다.
+아래 경로는 `template.yaml`에 선언된 HTTP API 기준입니다. 별도 표기가 없는
+사용자 및 관리자 API는 `Authorization: Bearer <access-token>` 인증이 필요합니다.
 
-### 5. 일정 저장 및 반응 (Saved Plans)
-- **`POST /api/v1/me/itineraries`**: 생성된 여행 일정을 보관함에 영속 저장.
-- **`GET /api/v1/me/itineraries`**: 저장된 일정 목록 조회.
-- **`GET /api/v1/me/itineraries/{itineraryId}`**: 저장된 일정의 일차별 상세 명세 조회.
-- **`DELETE /api/v1/me/itineraries/{itineraryId}`**: 저장된 일정의 soft delete (`deleted_at` 처리).
-- **`POST /api/v1/me/itineraries/{itineraryId}/like`**: 저장된 일정에 좋아요 누르기.
-- **`DELETE /api/v1/me/itineraries/{itineraryId}/like`**: 저장된 일정의 좋아요 취소.
+### 인증과 사용자
 
-### 6. 관리자 보안 및 고위험 변경 (Admin Security)
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/google` | Google 로그인 |
+| `POST` | `/api/v1/auth/kakao` | Kakao 로그인 |
+| `POST` | `/api/v1/auth/cognito/session` | Cognito JWT를 Lovv 세션으로 연결 |
+| `GET` | `/api/v1/auth/session` | HttpOnly refresh cookie로 세션 갱신 |
+| `POST` | `/api/v1/auth/logout` | refresh session 종료 |
+| `GET` | `/api/v1/auth/me` | 현재 사용자 조회 |
+| `PATCH` | `/api/v1/auth/me` | 현재 사용자 프로필 수정 |
+| `GET` | `/api/v1/auth/social-accounts` | 연결된 소셜 계정 조회 |
+| `POST` | `/api/v1/auth/link/{provider}` | Google 또는 Kakao 계정 연결 |
 
-- **`GET /api/v1/admin/security/mfa/status`**: 관리자 MFA 등록 및 현재 세션 검증 상태 조회.
-- **`POST /api/v1/admin/security/mfa/enroll`**: TOTP 등록 시작.
-- **`POST /api/v1/admin/security/mfa/confirm`**: TOTP 등록 확인 및 recovery code 발급.
-- **`POST /api/v1/admin/security/mfa/verify`**: 현재 관리자 세션을 TOTP로 검증.
-- **`POST /api/v1/admin/security/mfa/recover`**: 1회용 recovery code로 복구 세션 생성.
-- **`GET /api/v1/admin/high-risk-requests`**: 고위험 변경 요청 목록 조회.
-- **`POST /api/v1/admin/high-risk-requests`**: 역할·지역 할당 변경 또는 대량 게시 요청 생성.
-- **`POST /api/v1/admin/high-risk-requests/{id}/approve`**: 다른 `R-SUPER-ADMIN`이 요청 승인 및 실행.
-- **`POST /api/v1/admin/high-risk-requests/{id}/reject`**: 다른 `R-SUPER-ADMIN`이 요청 거절.
+### 선호도, 추천과 경로
 
-일반 관리자 읽기·목록 API는 관리자 role 인증만 요구하며 MFA를 전역 게이트로 사용하지 않습니다. 고위험 approve/reject에만 최근 5분 이내 TOTP 검증이 필요합니다. Recovery code 세션은 고위험 결정에 사용할 수 없고, approve/reject body에도 TOTP code를 넣지 않습니다. 먼저 `/api/v1/admin/security/mfa/verify`로 세션을 검증해야 합니다.
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `GET` | `/api/v1/me/preferences` | 사용자 여행 선호도 조회 |
+| `PUT` | `/api/v1/me/preferences` | 사용자 여행 선호도 저장 |
+| `POST` | `/api/v1/recommendations` | AgentCore V2 일정 생성·명확화·수정 |
+| `POST` | `/api/v1/routes` | 좌표 배열의 Kakao Mobility 경로 재계산 |
+| `GET` | `/api/v1/recommendations/monthly-cities` | 월간 추천 도시 조회 (공개) |
+| `GET` | `/api/v1/recommendations/popular-destinations` | 인기 여행지 조회 (공개) |
+| `GET` | `/api/v1/recommendations/reaction-cities` | 사용자 반응 기반 도시 조회 |
 
-상세 계약은 `docs/specs/ADMIN_RBAC_SPEC.md`, 운영 절차는 `docs/specs/ADMIN_OPERATIONS_RUNBOOK.md`를 참조합니다.
+`POST /api/v1/routes`는 서버에서 Kakao Mobility 키를 읽으며, 클라이언트에 키를
+노출하지 않습니다. 응답의 `route.segments`에는 카드 간 거리와 시간이 포함됩니다.
 
----
+### 저장 일정
 
-## 🔒 Authentication Model
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `POST` | `/api/v1/me/itineraries` | 일정 저장 |
+| `GET` | `/api/v1/me/itineraries` | 내 일정 목록 조회 |
+| `GET` | `/api/v1/me/itineraries/{itineraryId}` | 내 일정 상세 조회 |
+| `DELETE` | `/api/v1/me/itineraries/{itineraryId}` | 일정 삭제 |
+| `PUT` | `/api/v1/me/itineraries/{itineraryId}/reactions/like` | 좋아요 등록 |
+| `DELETE` | `/api/v1/me/itineraries/{itineraryId}/reactions/like` | 좋아요 취소 |
+| `PATCH` | `/api/v1/me/itineraries/{itineraryId}/share` | 공개 상태 변경 |
+| `POST` | `/api/v1/me/itineraries/{itineraryId}/clone` | 공개 일정 복제 |
+| `GET` | `/api/v1/itineraries/public` | 공개 일정 목록 조회 |
+| `GET` | `/api/v1/itineraries/{itineraryId}` | 공개 일정 상세 조회 |
 
-- **Access Token**: HMAC-SHA256(`AUTH_TOKEN_SIGNING_SECRET`)으로 서명한 짧은 수명의 JWT를 Bearer 헤더로 전달받아 API 인증에 사용합니다.
-- **Refresh Token**: 브라우저와 연동되는 `HttpOnly; Secure; SameSite=None` 속성의 opaque 쿠키를 활용하여 무상태(Stateless) JWT의 한계를 보완하고 세션을 유지합니다.
-- **Session DB**: DynamoDB에는 노출을 최소화하기 위해 해시된 refresh token 값만 저장하며, 세션 만료 시 TTL에 의해 자동 청소됩니다.
-- **Cognito Bridge**: Hosted UI를 거친 사용자는 API Gateway의 Cognito JWT Authorizer 검증을 마친 뒤 `/auth/cognito/session`으로 연결(Bridge)되어 `R-USER` 권한을 할당받습니다.
-- **Admin RBAC**: `require_admin_access`가 적용된 공통 관리자 API는 `R-ADMIN`과 `R-SUPER-ADMIN`을 허용합니다. 역할별 전용 API는 별도 role 검사를 따르며, 고위험 변경의 승인·거절은 `R-SUPER-ADMIN`만 가능하고 요청자 본인 승인은 금지됩니다.
+### 소도시와 이미지
 
----
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `GET` | `/api/v1/small-cities` | 소도시 목록 조회 |
+| `GET` | `/api/v1/small-cities/{cityId}` | 소도시 상세 조회 |
+| `GET` | `/api/v1/small-cities/{cityId}/places` | 도시 명소와 축제 조회 |
+| `GET` | `/api/v1/map/cities` | 지도용 도시 목록 조회 |
+| `GET` | `/api/v1/map/cities/{cityId}` | 지도용 도시 상세 조회 |
+| `GET` | `/api/v1/map/cities/{cityId}/places` | 지도용 장소 조회 |
+| `GET` | `/api/v1/map/markers` | 지도 마커 조회 |
+| `GET` | `/api/v1/kakao-places/{placeId}/image` | Kakao 장소 대표 이미지 조회 |
 
-## 📂 Backend Directory Structure
+`/api/small-cities` 비버전 경로도 기존 클라이언트 호환을 위해 유지됩니다.
+
+### 관리자
+
+관리자 API는 `/api/v1/admin/*` 아래에 있으며 사용자 관리, 데이터 제안 검토,
+월간 여행지 게시, 운영 지표, 공지, 추천 정책, 감사 로그와 게시 작업을 다룹니다.
+일반 관리자 조회는 role 인증을 사용하고, 고위험 승인·거절은 최근 MFA 검증과
+다른 `R-SUPER-ADMIN`의 승인을 요구합니다.
+
+## 저장소 구조
 
 ```text
 Lovv_BE/
-├── .aws-sam/             # AWS SAM 빌드 임시 결과물
-├── docs/                 # 백엔드 설계 및 API 스펙 문서
-├── events/               # Lambda 로컬 실행 테스트용 API Gateway mock events
-├── infra/                # 인프라 SQL 및 데이터 스택 정의
-│   └── data-stack/rds/schema.sql
-├── schema/aurora_mysql/  # 관리자 콘솔 002/003/004 migration
-├── parameters/           # 배포 매개변수 설정 템플릿
+├── docs/                       # 아키텍처, 로컬 DB, 운영 명세
+├── events/                     # SAM local invoke 예제 이벤트
+├── infra/data-stack/           # VPC, RDS, DynamoDB 데이터 스택
+├── parameters/                 # dev/poc/prod SAM 파라미터
+├── schema/aurora_mysql/        # 관리자 및 일정 스냅샷 migration
+├── scripts/                    # DB, 관리자, 로컬 smoke 도구
 ├── src/
-│   ├── admin/            # 관리자 콘솔, MFA, 고위험 승인 Lambda 핸들러
-│   ├── auth/             # 로그인, 세션 처리, 토큰 관리 Lambda 핸들러
-│   ├── map_city/         # 소도시 정보 및 S3 JSON 파싱 Lambda 핸들러
-│   ├── preferences/      # 선호도 CRUD Lambda 핸들러
-│   ├── recommendations/  # AI 일정 생성 처리 Lambda 핸들러
-│   ├── saved_plans/      # 일정 보관함 및 반응 CRUD Lambda 핸들러
-│   └── shared/           # DB 커넥션, CORS, Response 등 공유 헬퍼
-├── template.yaml         # CloudFormation 기반 AWS 리소스 정의 템플릿
-└── tests/                # unittest 프레임워크 기반 API/핸들러 테스트 케이스
+│   ├── admin/                  # 관리자 운영, MFA, 고위험 승인
+│   ├── agentcore/              # AgentCore V2 프록시와 Kakao 경로 계산
+│   ├── auth/                   # 로그인, 세션, Lambda authorizer
+│   ├── kakao_places/           # Kakao 장소 이미지 resolver
+│   ├── preferences/            # 사용자 선호도
+│   ├── recommendations/        # 월간·인기·반응 추천 피드
+│   ├── saved_plans/            # 일정 저장, 공유, 복제, 반응
+│   ├── shared/                 # HTTP, 인증, DB, 로깅 공통 코드
+│   └── small_cities/           # S3/DynamoDB 소도시 조회
+├── tests/                      # unittest 테스트
+├── template.yaml               # Backend API SAM 템플릿
+├── samconfig.toml              # 환경별 배포 프로필
+└── docker-compose.yml          # 로컬 MySQL 8
 ```
 
----
+## 개발 환경 준비
 
-## 🚀 Local Verification & Testing
+### 요구 사항
 
-배포하기 전 로컬 환경에서 백엔드 함수와 API 흐름을 검증할 수 있습니다.
+- Python 3.12
+- AWS SAM CLI
+- Docker와 Docker Compose (로컬 MySQL 사용 시)
+- AWS CLI와 배포 권한 (AWS 배포 시)
+
+### 의존성 설치
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r src/requirements.txt -r requirements-dev.txt
+```
+
+Windows PowerShell에서는 `.venv\Scripts\Activate.ps1`로 가상환경을 활성화합니다.
+
+`.env.example`은 변수 구조만 제공하는 예시입니다. 실제 API 키, JWT 서명값,
+OAuth secret 또는 AWS 자격증명을 Git에 커밋하지 마세요.
+
+## 로컬 실행
+
+### 단위 테스트
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
+PowerShell:
 
 ```powershell
-# 1. Lambda 런타임/로컬 개발 의존성 설치
-python -m pip install -r src/requirements.txt -r requirements-dev.txt
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests
+```
 
-# 2. unittest 기반 백엔드 단위 테스트 수행
-$env:PYTHONPATH='src'
-python -m unittest
+외부 서비스와 DB는 대부분 테스트 double로 대체됩니다. 실DB 테스트는 기본적으로
+skip되며, 명시적인 integration 환경 변수 없이 실DB 검증으로 간주하지 않습니다.
 
-# 3. 관리자 MFA/고위험 승인 핵심 테스트
-python -m unittest tests.test_admin_high_risk_app
-python -m unittest tests.test_admin_mfa_app.AdminMfaAppTest.test_admin_read_routes_need_role_only_and_mfa_status_is_accessible
+### 로컬 MySQL
 
-# 4. 로컬 API 스모크 테스트 (외부 API Mocking을 통한 핸들러 동작 점검)
-python scripts/local_api_smoke.py
+```bash
+docker compose up -d
+docker compose exec mysql mysql -uroot -plovvlocal -e "USE lovvdev; SHOW TABLES;"
+```
 
-# 5. AWS SAM 템플릿 검증 및 린팅
-sam validate
-sam validate --lint
+기본 접속 주소는 `127.0.0.1:13306`, DB는 `lovvdev`입니다. 초기 스키마와 관리자
+migration은 빈 볼륨의 최초 기동 시 순서대로 적용됩니다. 자세한 절차는
+[로컬 DB 가이드](docs/LOCAL_DB_DOCKER.md)를 참고하세요.
 
-# 6. SAM 빌드 실행 (Lambda 모듈 패키징)
+### SAM 로컬 검증
+
+```bash
+sam validate --lint --template-file template.yaml
+sam build
+sam local invoke AuthFunction --event events/auth-me.json
+```
+
+Lambda authorizer, VPC, AWS 관리형 서비스와 외부 API까지 포함한 동작은 로컬 SAM만으로
+완전히 재현되지 않습니다. 인증 흐름은 단위 테스트와 배포 환경 smoke test를 함께
+사용합니다.
+
+## 환경 설정
+
+배포 파라미터는 다음 파일에서 관리합니다.
+
+| 환경 | SAM config | Parameter file | Stack name |
+| --- | --- | --- | --- |
+| dev | `default` | `parameters/dev.yaml` | `lovv-dev-api` |
+| poc | `poc` | `parameters/poc.yaml` | `lovv-poc-api` |
+| prod | `prod` | `parameters/prod.yaml` | `lovv-prod-api` |
+
+중요한 런타임 설정:
+
+- `AgentCoreRuntimeArn`: AgentCore V2 Runtime ARN
+- `KakaoMobilityRestApiKeySsmName`: Kakao Mobility 키가 저장된 SSM SecureString 이름
+- `AuthTokenSigningSecretArn`: JWT 서명 secret의 Secrets Manager ARN
+- `AllowedCorsOrigin`: credential 요청을 허용할 정확한 브라우저 origin 목록
+- `RdsHost`, `RdsSecretArn`, `VpcId`, `PrivateSubnetA`, `PrivateSubnetC`: 데이터 스택 연결
+- `MapCityS3Bucket`, `MapCityS3Prefix`, `MapCityDynamoTableName`: 소도시 데이터 소스
+
+배포 전에 대상 계정과 리전에 Secrets Manager secret 및 SSM SecureString이 실제로
+존재해야 합니다. `poc/prod` 파라미터 파일의 placeholder 인프라 값도 반드시 실제
+리소스로 교체해야 합니다.
+
+## 배포
+
+먼저 로컬 검증을 수행합니다.
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests
+sam validate --lint --template-file template.yaml
 sam build
 ```
 
-실DB 통합 테스트는 일반 unittest에서 기본 skip됩니다. `RUN_ADMIN_DB_INTEGRATION=1` 또는 `RUN_RDS_DATA_API_INTEGRATION=1`을 명시한 실행만 실DB 검증 완료로 기록합니다. 로컬 MySQL 초기화와 현재 schema 순서는 `docs/LOCAL_DB_DOCKER.md`를 참조합니다.
-
----
-
-## ☁️ Deployment
-
-`sam deploy` 명령을 사용해 AWS에 리소스를 배포합니다. 실제 Secret Key 등은 파라미터 재정의(`--parameter-overrides`) 옵션을 통해 주입합니다.
+환경별 배포:
 
 ```bash
-sam deploy --guided \
-  --parameter-overrides \
-  MapCityS3Bucket=your-data-pipeline-bucket \
-  MapCityS3Prefix=raw/KR/details/20260609/ \
-  AgentCoreRuntimeArn=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/replace-me \
-  AllowedCorsOrigin=http://localhost:5173,https://your-cloudfront-domain.net \
-  AuthTokenSigningSecret=your-token-signing-secret \
-  AuthRefreshCookieSameSite=None \
-  AuthRefreshCookieSecure=true \
-  AuthRefreshCookiePath=/ \
-  GoogleClientId=your-google-client-id \
-  GoogleClientSecret=your-google-client-secret \
-  KakaoClientId=your-kakao-client-id \
-  EnableCognitoPoC=true \
-  RdsHost=your-rds-aurora-endpoint \
-  RdsSecretArn=your-rds-credentials-secret-arn \
-  RdsDatabaseName=lovvdev \
-  VpcId=your-vpc-id \
-  PrivateSubnetA=your-private-subnet-a \
-  PrivateSubnetC=your-private-subnet-c \
-  AuthSessionsTableName=lovv_dev_auth_sessions
+# dev
+sam deploy --config-env default
+
+# poc
+sam deploy --config-env poc
+
+# prod
+sam deploy --config-env prod
 ```
+
+`prod` 배포 전에는 CloudFormation changeset, CORS origin, OAuth callback URL, cookie
+domain, IAM 범위, RDS 대상과 secret 경로를 반드시 검토합니다. 배포 결과의 API URL은
+CloudFormation output `LovvApiUrl`에서 확인할 수 있습니다.
+
+## 보안 원칙
+
+- 브라우저에는 access token만 Bearer 헤더로 전달하고 refresh token은 HttpOnly cookie로 관리합니다.
+- refresh token 원문은 저장하지 않고 DynamoDB에 해시와 TTL만 보관합니다.
+- Kakao Mobility, OAuth, JWT 및 DB secret은 클라이언트 코드나 Git에 넣지 않습니다.
+- API Gateway CORS는 `AllowedCorsOrigin`에 등록된 정확한 origin만 허용합니다.
+- 추천 및 경로 API는 Lambda Function URL이 아닌 인증된 HTTP API 경로를 사용합니다.
+- 관리자 고위험 작업은 역할 검사, MFA, 본인 승인 금지와 감사 로그를 적용합니다.
+
+## 검증 체크리스트
+
+```bash
+git diff --check
+PYTHONPATH=src python -m unittest discover -s tests
+sam validate --lint --template-file template.yaml
+sam build
+```
+
+실제 AWS 또는 외부 제공자 smoke test를 수행하지 않았다면 테스트 결과에 그 사실을
+명시해야 합니다.

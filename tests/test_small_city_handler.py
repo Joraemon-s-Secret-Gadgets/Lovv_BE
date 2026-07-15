@@ -1,3 +1,8 @@
+# @file tests/test_small_city_handler.py
+# @description 소도시 Lambda 핸들러의 라우팅, 쿼리 검증, CORS 및 저장소 오류 매핑을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import os
 import unittest
@@ -452,3 +457,5 @@ class SmallCityHandlerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_small_city_handler.py

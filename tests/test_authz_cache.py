@@ -1,3 +1,8 @@
+# @file tests/test_authz_cache.py
+# @description Tests authorization cache freshness, version checks, and invalidation.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -48,3 +53,6 @@ class AuthzCacheTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_authz_cache.py

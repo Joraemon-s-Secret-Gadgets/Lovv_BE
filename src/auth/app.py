@@ -1,6 +1,7 @@
 # @file src/auth/app.py
 # @description 소셜 로그인(구글/카카오) 연동, Cognito 연동 세션 검증, JWT 토큰 발급 및 DynamoDB 기반 리프레시 세션 관리를 수행하는 Lambda 핸들러.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import base64
 import hashlib

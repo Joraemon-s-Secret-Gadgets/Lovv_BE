@@ -1,3 +1,8 @@
+# @file src/small_cities/service.py
+# @description 소도시 목록 검색, 테마 필터링, 페이지네이션 및 마커 변환을 제공한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from small_cities.mapper import build_city_api_record
 
 
@@ -104,3 +109,5 @@ def marker_from_city(record):
         "longitude": record.get("longitude"),
         "imageUrl": record.get("image_url"),
     }
+
+# EOF: src/small_cities/service.py

@@ -1,3 +1,8 @@
+# @file docker-compose.yml
+# @description Runs the local MySQL service with ordered Lovv schema initialization for backend development.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 # Local dev database for Lovv_BE.
 # Runs MySQL 8.0 (matching Aurora MySQL 8 / utf8mb4_0900_ai_ci) and auto-applies
 # the schema migrations on first start. The dev helper scripts and (with a secret)
@@ -34,3 +39,5 @@ services:
 
 volumes:
   lovv_mysql_data:
+
+# EOF: docker-compose.yml

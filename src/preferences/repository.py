@@ -1,6 +1,7 @@
 # @file src/preferences/repository.py
 # @description Preference repository backed by the configured SQL client.
-# @lastModified 2026-06-12
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import os
 import uuid

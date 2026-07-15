@@ -1,3 +1,8 @@
+# @file src/kakao_places/image_resolver.py
+# @description Kakao 장소 페이지에서 허용된 CDN의 Open Graph 이미지 URL을 안전하게 추출한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import re
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
@@ -49,6 +54,7 @@ def resolve_kakao_place_image(place_id, opener=urlopen):
 
     try:
         with opener(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            # 신뢰할 수 없는 업스트림 응답이 Lambda 메모리를 과도하게 사용하지 못하도록 상한보다 한 바이트만 더 읽는다.
             payload = response.read(MAX_RESPONSE_BYTES + 1)
     except (HTTPError, URLError, TimeoutError, OSError) as error:
         raise KakaoPlaceImageError("Kakao place metadata is unavailable.") from error
@@ -77,7 +83,10 @@ def normalize_image_url(value):
 
     parsed = urlparse(image_url)
     hostname = (parsed.hostname or "").lower()
+    # 외부 페이지가 임의 호스트를 주입해도 클라이언트에 전달되지 않도록 HTTPS Kakao CDN만 허용한다.
     if parsed.scheme != "https" or not any(hostname.endswith(suffix) for suffix in ALLOWED_IMAGE_HOST_SUFFIXES):
         return None
 
     return image_url
+
+# EOF: src/kakao_places/image_resolver.py

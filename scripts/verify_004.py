@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/verify_004.py
+# @description Verify that the three high-risk approval and MFA tables from migration 004 exist in the target database.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only check: confirm the 004 high-risk/MFA tables exist in the target DB.
 
 Run with the SSM tunnel open and credentials set, exactly like
@@ -73,3 +77,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/verify_004.py

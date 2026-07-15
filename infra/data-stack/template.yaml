@@ -1,3 +1,8 @@
+# @file infra/data-stack/template.yaml
+# @description Provisions the Lovv stateful network, database, cache, storage, and image-delivery infrastructure.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 # ==============================================================================
 # 템플릿 메타데이터 및 설명
 # ==============================================================================
@@ -1112,3 +1117,5 @@ Outputs:
     Value: !Ref VisitorStatisticsTable
   AuthSessionsTableName:
     Value: !Ref AuthSessionsTable
+
+# EOF: infra/data-stack/template.yaml

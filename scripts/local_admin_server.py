@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/local_admin_server.py
+# @description Serve the real admin Lambda handler locally with in-memory repositories for frontend integration checks.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Local-only HTTP server for verifying the Lovv admin console <-> backend wiring.
 
 Why this exists
@@ -203,6 +207,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
 
 
 def _print_banner():
+    # These credentials are printed for manual testing and must not be reused outside the local dev session.
     admin_token = create_access_token(
         user_id=ADMIN["userId"],
         session_id="dev-admin-session",
@@ -250,3 +255,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# EOF: scripts/local_admin_server.py

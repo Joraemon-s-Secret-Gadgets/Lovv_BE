@@ -1,3 +1,9 @@
+# @file parameters/poc.yaml
+# @description Supplies proof-of-concept deployment values for the Lovv SAM application stack.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
+# Placeholder identifiers must be replaced by the target PoC stack before deployment.
 - ParameterKey: EnvName
   ParameterValue: "poc"
 - ParameterKey: LogRetentionInDays
@@ -98,3 +104,5 @@
   ParameterValue: "itinerary_items"
 - ParameterKey: PlanReactionsTableName
   ParameterValue: "plan_reactions"
+
+# EOF: parameters/poc.yaml

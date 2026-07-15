@@ -1,3 +1,8 @@
+# @file tests/test_kakao_place_image_app.py
+# @description Kakao 장소 이미지 Lambda의 입력 검증, CDN 정규화 및 오류 응답을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import unittest
 from pathlib import Path
@@ -86,3 +91,5 @@ class KakaoPlaceImageAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_kakao_place_image_app.py

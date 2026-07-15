@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# @file scripts/verify_bootstrap.py
+# @description Verify a target user's active global Super Admin assignment and matching successful bootstrap audit event.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 """Dev-only check: confirm a Super Admin bootstrap took effect for a target user.
 
 For --target-user-id, checks:
@@ -98,3 +102,5 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# EOF: scripts/verify_bootstrap.py
