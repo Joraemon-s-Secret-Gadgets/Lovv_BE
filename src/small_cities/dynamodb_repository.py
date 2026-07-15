@@ -1,3 +1,8 @@
+# @file src/small_cities/dynamodb_repository.py
+# @description DynamoDB 소도시 항목과 카탈로그 메타데이터를 API 레코드로 조회하고 조합한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import json
 from collections import defaultdict
@@ -500,3 +505,5 @@ def _s3_client():
     except ImportError as error:
         raise RuntimeError("boto3 is required in the Lambda runtime.") from error
     return boto3.client("s3")
+
+# EOF: src/small_cities/dynamodb_repository.py

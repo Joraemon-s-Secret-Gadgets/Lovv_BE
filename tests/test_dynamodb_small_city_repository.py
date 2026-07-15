@@ -1,3 +1,8 @@
+# @file tests/test_dynamodb_small_city_repository.py
+# @description DynamoDB 소도시 저장소의 조회, 메타데이터 보강 및 fallback 동작을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -193,3 +198,5 @@ class DynamoDbSmallCityRepositoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_dynamodb_small_city_repository.py

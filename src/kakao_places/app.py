@@ -1,3 +1,8 @@
+# @file src/kakao_places/app.py
+# @description Kakao 장소 이미지 조회 요청을 검증하고 HTTP 응답으로 변환하는 Lambda 핸들러다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 from shared.http import error_response, json_response
 from shared.logger import Tag, get_logger
 from kakao_places.image_resolver import KakaoPlaceImageError, resolve_kakao_place_image, validate_place_id
@@ -45,9 +50,12 @@ def get_place_id(event):
     if path_parameters.get("placeId"):
         return path_parameters["placeId"]
 
+    # API Gateway 설정에 따라 pathParameters가 누락될 수 있어 원본 경로도 제한된 패턴으로 해석한다.
     path = event.get("rawPath") or event.get("path") or ""
     prefix = "/api/v1/kakao-places/"
     suffix = "/image"
     if path.startswith(prefix) and path.endswith(suffix):
         return path[len(prefix) : -len(suffix)].strip("/")
     return None
+
+# EOF: src/kakao_places/app.py

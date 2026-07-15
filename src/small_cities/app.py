@@ -1,6 +1,7 @@
 # @file src/small_cities/app.py
 # @description 소도시 원천 데이터를 분석하여 프론트엔드에 마커 및 상세 관광 콘텐츠 목록을 제공하는 Lambda 핸들러.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 
 import json
 import os
@@ -185,6 +186,7 @@ def parse_positive_int(value, default, name, maximum=None):
 
 
 def default_repository():
+    # 배포 환경에서 명시한 데이터 소스만 선택하고 오타는 조용히 기본값으로 폴백하지 않는다.
     source = os.environ.get("MAP_CITY_SOURCE", "dynamodb").strip().lower()
     if source in ("", "dynamodb", "dynamo"):
         return DynamoDbSmallCityRepository.from_env()
@@ -216,3 +218,5 @@ def json_default(value):
             return int(value)
         return float(value)
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+# EOF: src/small_cities/app.py

@@ -1,4 +1,10 @@
 """tests/test_image_resolver.py — image_resolver 단위 테스트"""
+
+# @file tests/test_image_resolver.py
+# @description 소도시 이미지 키 변환, 로마자 표기 및 URL fallback 해석을 검증한다.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import unittest
 
 from small_cities.image_resolver import _romanize_korean, _to_pascal_stem, load_image_map, resolve_image_url
@@ -171,3 +177,5 @@ class TestLoadImageMap(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# EOF: tests/test_image_resolver.py
