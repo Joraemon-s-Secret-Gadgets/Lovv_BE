@@ -1,3 +1,8 @@
+# @file src/admin/high_risk_repository.py
+# @description Coordinates approval and execution of high-risk administrative changes.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import copy
 import os
 import uuid
@@ -132,6 +137,8 @@ class RdsDataHighRiskChangeRepository:
         target_user_id = None
         request = None
         try:
+            # Lock the request, apply the privileged change, and persist both
+            # audit records atomically so no executed change can lack evidence.
             with self.rds.transaction() as transaction:
                 request = self._locked_request(transaction, request_id)
                 self._validate_decision(request, principal)
@@ -174,6 +181,8 @@ class RdsDataHighRiskChangeRepository:
         except Exception as error:
             _attach_failure_context(error, request, request_id)
             raise
+        # Invalidate only after commit; readers must never observe authorization
+        # derived from a transaction that may still roll back.
         if target_user_id and request["operationType"].startswith(("role_", "region_")):
             self._invalidate_authz(target_user_id)
         return request
@@ -324,6 +333,8 @@ class RdsDataHighRiskChangeRepository:
 
     def _revoke_role(self, transaction, payload, now):
         if payload["roleCode"] == "R-SUPER-ADMIN":
+            # The row lock serializes concurrent revocations that could each
+            # otherwise believe another active super admin remains.
             count = transaction.fetch_one(
                 f"""
                 SELECT COUNT(*) AS active_count FROM {self.roles_table}
@@ -807,3 +818,6 @@ def _optional_text(value):
     if not isinstance(value, str):
         raise HighRiskChangeError(400, "INVALID_HIGH_RISK_PAYLOAD", "Text fields must be strings")
     return value.strip() or None
+
+
+# EOF: src/admin/high_risk_repository.py

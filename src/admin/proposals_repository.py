@@ -1,6 +1,7 @@
 # @file src/admin/proposals_repository.py
 # @description Admin console data proposal repository backed by the configured SQL client.
-# @lastModified 2026-06-23
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Owns the data-proposal lifecycle (create -> review -> approve/reject + history)
 # and the row-level visibility rules. Status transitions and conflict-of-interest

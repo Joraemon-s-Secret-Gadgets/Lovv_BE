@@ -1,6 +1,7 @@
 # @file src/admin/publish_jobs_repository.py
-# @description Admin publish job repository (step 12: approved-data reflection).
-# @lastModified 2026-06-24
+# @description Manages reflection jobs created when curated destinations are published.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Owns admin_publish_jobs: when a monthly curated destination is published, four
 # reflection jobs (catalog/RAG/search/recommendation sync) are enqueued, then run
@@ -243,3 +244,6 @@ def _optional_text(value):
         return value
     text = value.strip()
     return text or None
+
+
+# EOF: src/admin/publish_jobs_repository.py

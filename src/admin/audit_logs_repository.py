@@ -1,6 +1,7 @@
 # @file src/admin/audit_logs_repository.py
-# @description Admin audit log repository (step 17: audit trail + monitoring).
-# @lastModified 2026-06-24
+# @description Persists and queries append-only administrative audit records.
+# @author JJonyeok2
+# @lastModified 2026-07-15
 #
 # Append-only record of every admin mutation. Each entry snapshots who acted
 # (actor + roles/org/region scopes), what action on which resource, and the
@@ -379,3 +380,6 @@ def _clean_text(value):
         value = str(value)
     value = value.strip()
     return value or None
+
+
+# EOF: src/admin/audit_logs_repository.py

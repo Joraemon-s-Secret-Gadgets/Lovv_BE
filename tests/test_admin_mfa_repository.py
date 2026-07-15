@@ -1,3 +1,8 @@
+# @file tests/test_admin_mfa_repository.py
+# @description Verifies atomic recovery-code consumption in the admin MFA repository.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import sys
 import unittest
 from pathlib import Path
@@ -46,3 +51,6 @@ class AdminMfaRepositoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_mfa_repository.py

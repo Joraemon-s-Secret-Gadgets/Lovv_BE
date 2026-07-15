@@ -1,3 +1,8 @@
+# @file tests/test_admin_high_risk_app.py
+# @description Verifies high-risk admin approval routes, MFA gates, and audit outcomes.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -366,3 +371,6 @@ class AdminHighRiskAppTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_high_risk_app.py

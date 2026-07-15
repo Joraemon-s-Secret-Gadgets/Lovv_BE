@@ -1,3 +1,8 @@
+# @file tests/test_admin_monthly_destinations_app.py
+# @description Verifies monthly destination promotion, state transitions, and scoping.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -219,3 +224,6 @@ class MonthlyDestinationApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_monthly_destinations_app.py

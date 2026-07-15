@@ -1,3 +1,8 @@
+# @file src/admin/mfa_repository.py
+# @description Persists admin MFA credentials, replay counters, failures, and sessions.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 from datetime import datetime, timezone
 
@@ -72,6 +77,8 @@ class RdsDataAdminMfaRepository:
         return _updated_once(result)
 
     def consume_totp_counter(self, user_id, counter, now):
+        # The monotonic predicate makes replay prevention atomic across
+        # concurrent Lambda invocations, not just within one service process.
         result = self.rds.execute(
             f"""
             UPDATE {self.credentials_table}
@@ -86,6 +93,8 @@ class RdsDataAdminMfaRepository:
         return _updated_once(result)
 
     def consume_recovery_codes(self, user_id, current_codes, remaining_codes, now):
+        # Compare-and-swap the full code set so two requests cannot consume the
+        # same single-use recovery code from the same snapshot.
         result = self.rds.execute(
             f"""
             UPDATE {self.credentials_table}
@@ -265,3 +274,6 @@ def parse_utc(value):
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+# EOF: src/admin/mfa_repository.py

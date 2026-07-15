@@ -1,3 +1,8 @@
+# @file tests/test_admin_migration.py
+# @description Verifies admin migration discovery, parsing, and repeatable application.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import os
 import sys
 import tempfile
@@ -114,3 +119,6 @@ class AdminMigrationLiveMySqlTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_migration.py

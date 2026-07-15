@@ -1,3 +1,8 @@
+# @file tests/test_admin_proposals_app.py
+# @description Verifies proposal API creation, visibility, review, and validation rules.
+# @author JJonyeok2
+# @lastModified 2026-07-15
+
 import json
 import sys
 import unittest
@@ -502,3 +507,6 @@ class AdminProposalsAppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# EOF: tests/test_admin_proposals_app.py
